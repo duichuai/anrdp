@@ -25,7 +25,23 @@ AAR 由上述源码构建，构建期共应用 9 处补丁，全部为构建配�
 
 完整且可执行的补丁实现见仓库脚本 [`scripts/build-freerdpcore-aar.sh`](scripts/build-freerdpcore-aar.sh)。该脚本会自动下载对应版本的上游源码、应用上述补丁并编译，因此执行它即可获得与本 AAR 相同的 Source Code Form（脚本默认版本即 FreeRDP 3.33.0）。
 
-## 3. 其他第三方组件源码
+## 3. tsnet AAR 源码
+
+`app/libs/tsnet.aar` 由工作区根目录的 `tsnet-android/`（Go module，**未纳入 anrdp 仓库**）用 `gomobile bind` 构建；wrapper 源码仅包含对 tsnet 的封装，未修改 Tailscale 上游源码。构建命令与版本见 `BUILD.md` §2.3 与 `docs/tailscale-integration-design.md` §4。
+
+其静态链接的组件源码地址：
+
+| 组件 | 版本 | 源码地址 |
+| --- | --- | --- |
+| Tailscale / tsnet | 1.104.0 | https://github.com/tailscale/tailscale |
+| wireguard-go（tailscale fork） | 随 tsnet 1.104.0 | https://github.com/tailscale/wireguard-go |
+| gVisor netstack | 随 tsnet 1.104.0 | https://github.com/google/gvisor |
+| Go 标准库 / golang.org/x | 1.27.1 | https://go.googlesource.com/go 、https://cs.opensource.google/go/x |
+| gomobile / gobind | latest | https://github.com/golang/mobile |
+
+> tsnet wrapper 源码可向维护者索取；若后续纳入仓库，将同步更新本节。
+
+## 4. 其他第三方组件源码
 
 | 组件 | 版本 | 源码地址 |
 | --- | --- | --- |
@@ -35,6 +51,6 @@ AAR 由上述源码构建，构建期共应用 9 处补丁，全部为构建配�
 | uriparser | 1.0.2 | https://github.com/uriparser/uriparser |
 | SQLCipher | 4.17.0 | https://github.com/sqlcipher/sqlcipher |
 
-## 4. 书面要约
+## 5. 书面要约
 
 若无法通过上述途径获取对应源码，可通过本仓库的 Issue 联系维护者，我们将在合理时间内提供源码副本，收取的费用不超过源码分发成本。

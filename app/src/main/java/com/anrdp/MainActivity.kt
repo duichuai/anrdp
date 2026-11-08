@@ -3,6 +3,7 @@ package com.anrdp
 import android.content.Intent
 import android.os.Bundle
 import android.text.InputType
+import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -20,6 +21,7 @@ import com.anrdp.data.ConnectionEntity
 import com.anrdp.databinding.ActivityMainBinding
 import com.anrdp.databinding.ItemConnectionBinding
 import com.anrdp.edit.ConnectionEditActivity
+import com.anrdp.tailscale.TailscaleConfigEditActivity
 import kotlinx.coroutines.launch
 
 class MainActivity : AppCompatActivity() {
@@ -44,6 +46,18 @@ class MainActivity : AppCompatActivity() {
             startActivity(Intent(this, ConnectionEditActivity::class.java))
         }
 
+        binding.fabTailscale.setOnClickListener {
+            // 已有配置则回填编辑，没有则新建
+            lifecycleScope.launch {
+                val existing = db.tailscaleConfigDao().getAll().firstOrNull()
+                val intent = Intent(this@MainActivity, TailscaleConfigEditActivity::class.java)
+                if (existing != null) {
+                    intent.putExtra(TailscaleConfigEditActivity.EXTRA_CONFIG_ID, existing.id)
+                }
+                startActivity(intent)
+            }
+        }
+
         lifecycleScope.launch {
             db.connectionDao().observeAll().collect { list ->
                 adapter.submitList(list)
@@ -57,7 +71,25 @@ class MainActivity : AppCompatActivity() {
         if (conn.password.isEmpty()) {
             promptPassword(conn)
         } else {
-            RdpConnector.connect(this, conn, conn.password)
+            connectAsync(conn, conn.password)
+        }
+    }
+
+    /** 在协程中调用 RdpConnector（可能需要等待 tsnet 就绪） */
+    private fun connectAsync(conn: ConnectionEntity, password: String) {
+        lifecycleScope.launch {
+            try {
+                RdpConnector.connect(this@MainActivity, conn, password)
+            } catch (e: Throwable) {
+                // 捕获 Throwable 而非 Exception：gomobile/JNI 层问题可能抛 Error，
+                // 避免未捕获导致闪退，同时把堆栈打到 logcat 便于排查
+                Log.e("MainActivity", "connect failed", e)
+                android.widget.Toast.makeText(
+                    this@MainActivity,
+                    "连接失败: ${e.message ?: e.javaClass.simpleName}",
+                    android.widget.Toast.LENGTH_LONG
+                ).show()
+            }
         }
     }
 
@@ -76,7 +108,7 @@ class MainActivity : AppCompatActivity() {
             .setTitle(getString(R.string.enter_password_title, conn.username))
             .setView(container)
             .setPositiveButton(R.string.connect) { _, _ ->
-                RdpConnector.connect(this, conn, input.text.toString())
+                connectAsync(conn, input.text.toString())
             }
             .setNegativeButton(R.string.cancel, null)
             .show()

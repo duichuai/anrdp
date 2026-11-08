@@ -1,8 +1,10 @@
 # AnRDP 设计文档 — Android RDP 远程桌面客户端
 
-> 版本：v2 设计稿
-> 状态：设计方案（本次交付不含代码实现）
+> 版本：v2 设计稿（设计 + 实现记录）
+> 状态：**已实现**（基础版本提交 `01a51aa`；2026-11-08 增加 Tailscale 集成，未提交）
 > 关系：复用 `../anrdp`（v1）已验证的成果与踩坑结论，在 `anrdp2` 重新组织工程与方案
+>
+> 实现差异、当前模块/数据层细节以 `docs/technical-design.md` 为准；Tailscale 方案见 `docs/tailscale-integration-design.md`。
 
 ---
 
@@ -21,7 +23,7 @@
 
 ### 1.2 本次交付范围
 
-**仅输出设计方案**：架构、模块划分、接口约定、输入映射策略、构建方案、风险对策。**不编写应用代码、不产出 APK。**
+v2 设计稿规划架构、模块划分、接口约定、输入映射策略、构建方案与风险对策；后续已按本稿实现应用与 AAR 产物，实际落地情况见 `docs/technical-design.md`。
 
 ### 1.3 非目标（本期不做）
 
@@ -222,9 +224,12 @@ anrdp/
 │       │   ├── MainActivity.kt               # 连接列表
 │       │   ├── RdpConnector.kt               # Entity → freerdp:// URI
 │       │   ├── data/ConnectionEntity.kt|ConnectionDao.kt|AppDatabase.kt
+│       │   ├── data/TailscaleConfigEntity.kt|TailscaleConfigDao.kt   # 2026-11-08 新增
+│       │   ├── tailscale/TailscaleManager.kt|TailscaleConfigEditActivity.kt
 │       │   └── edit/ConnectionEditActivity.kt
 │       └── res/{layout,values,mipmap-*}
 ├── app/libs/freeRDPCore-release.aar         # 由 deps 上游工程预编译产出（方案 A）
+├── app/libs/tsnet.aar                       # tsnet（Tailscale 用户态节点，gomobile 产出）
 ├── deps/
 │   ├── freerdp-3.33.0/                       # 上游源码（含 Studio 工程）
 │   │   ├── client/Android/Studio/            # ① 用来编 AAR

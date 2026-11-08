@@ -1,8 +1,27 @@
 # AnRDP 集成 Tailscale 设计文档
 
-> 版本：v1 设计稿
-> 状态：设计方案（本次交付不含代码实现）
+> 版本：v1.1（设计 + 实现记录）
+> 状态：**已实现**（2026-11-08，改动尚未提交）
 > 关系：替代 `n2n-integration-design.md` 方案。利用 Tailscale（WireGuard）的成熟生态与 tsnet 嵌入库，在 anrdp 应用内实现 P2P 组网，使 RDP 可跨网络连接虚拟网段内的主机。
+
+## 实现状态（2026-11-08）
+
+实际实现与本文设计的差异如下（细节以 `docs/technical-design.md` §2.3 / §5.5 / §5.6 / §7.2 为准）：
+
+| 项 | 设计稿 | 实际实现 |
+| --- | --- | --- |
+| Go wrapper | `tsnet-android/`（独立模块） | 工作区根 `tsnet-android/`（Go module，**未纳入 anrdp 仓库**） |
+| wrapper API | `SOCKS5Listener()`，依赖 `Server.ServeSOCKS5` | `StartSOCKS5()` / `StopSOCKS5()` / `SOCKS5Addr()`，用 `tailscale.com/net/socks5.Server` + `tsnet.Server.Dial` |
+| 网络信息 | 未涉及 | Java 侧 `ConnectivityManager` → `Tsnetandroid.SetNetworkInfo` 注入接口/地址/网关（Android UID 无法直接 `net.Interfaces()`） |
+| 启动异常 | 未涉及 | Go `Start()` 内 `recover` panic；tsnet 日志写入 `stateDir/tsnet.log` |
+| 版本 | tsnet 1.98.x、androidapi 29 | `tailscale.com` **v1.104.0**、Go **1.27.1**、`-androidapi 21` |
+| 配置页 | 配置列表 + 多套配置 | **单配置快捷编辑**（`TailscaleConfigEditActivity`，左下 FAB），无列表/删除入口 |
+| 就绪等待 | 15s | **60s**（每 500ms 轮询） |
+| 前台服务 | 建议实现 | **未实现**；tsnet 随应用进程存活 |
+| 构建脚本 | `scripts/build-tsnet-aar.sh` | 无脚本，手工 `gomobile bind` |
+| 产物体积 | AAR 15–25MB | `tsnet.aar` 15MB，`libgojni.so` 30.5MB；release APK ≈46MB |
+
+已完成：Go wrapper、tsnet AAR、数据层（DB v4）、配置页、连接绑定与 SOCKS5 联动、错误回传。待办：真机 tailnet 端到端验证、前台服务、多配置管理页、状态展示。
 
 ---
 
@@ -21,7 +40,7 @@
 
 ### 1.2 本次交付范围
 
-**仅输出设计方案**：架构、模块划分、tsnet 原生库构建、SOCKS5 代理联动、构建方案、风险对策。**不编写应用代码、不产出 APK。**
+v1 设计稿仅规划架构、模块划分、tsnet 原生库构建、SOCKS5 代理联动、构建方案与风险对策；2026-11-08 已按本文落地应用代码与 tsnet AAR（未提交），实现差异见上方「实现状态」。
 
 ### 1.3 非目标（本期不做）
 
@@ -72,12 +91,12 @@ Tailscale 在 Android 上有两种集成模式：
 ```
 ┌──────────────────────────────────────────────────────────────┐
 │  UI 层 (app)                                                  │
-│   MainActivity              连接列表（含 Tailscale 状态指示）   │
+│   MainActivity              连接列表（左下 FAB 打开配置页）     │
 │   ConnectionEditActivity    编辑页增加「绑定 Tailscale 配置」   │
-│   TailscaleConfigActivity   Tailscale 配置管理（增删改查）      │
+│   TailscaleConfigEditActivity  单配置快捷编辑（实际实现）        │
 ├──────────────────────────────────────────────────────────────┤
 │  应用逻辑层 (app)                                             │
-│   TailscaleManager          启停 tsnet、状态订阅、SOCKS5 端口   │
+│   TailscaleManager          启停 tsnet、轮询状态、SOCKS5 端口   │
 │   RdpConnector              连接前检查 tsnet，注入 proxy 参数   │
 ├──────────────────────────────────────────────────────────────┤
 │  数据层 (app)                                                 │
@@ -121,6 +140,11 @@ Tailscale 在 Android 上有两种集成模式：
 package tsnetandroid
 
 import (
+    "context"
+    "fmt"
+    "net"
+
+    "tailscale.com/net/socks5"
     "tailscale.com/tsnet"
 )
 
@@ -144,8 +168,14 @@ func NewServer(hostname, controlURL, authKey, stateDir string) *Server {
     return &Server{srv: srv}
 }
 
-// Start 启动 tsnet，阻塞直到就绪或出错。应在后台线程调用。
-func (s *Server) Start() error {
+// Start 启动 tsnet（非阻塞）。调用方轮询 Status() 直到 "running"；应在后台线程调用。
+// 实际实现额外包含 recover，将 panic 转为 error 返回。
+func (s *Server) Start() (err error) {
+    defer func() {
+        if r := recover(); r != nil {
+            err = fmt.Errorf("tsnet panic: %v", r)
+        }
+    }()
     return s.srv.Start()
 }
 
@@ -154,16 +184,27 @@ func (s *Server) Close() error {
     return s.srv.Close()
 }
 
-// SOCKS5Listener 在本地启动 SOCKS5 代理，返回监听地址 host:port。
-func (s *Server) SOCKS5Listener() (string, error) {
-    ln, err := s.srv.Listen("tcp", "127.0.0.1:0")
+// StartSOCKS5 在本地启动 SOCKS5 代理，返回监听地址 host:port。
+// 实际实现使用 tailscale.com/net/socks5.Server，Dialer 走 tsnet.Server.Dial。
+func (s *Server) StartSOCKS5() (string, error) {
+    ln, err := net.Listen("tcp", "127.0.0.1:0")
     if err != nil {
-        return "", err
+        return "", fmt.Errorf("socks5 listen: %w", err)
     }
-    // 启动 SOCKS5 代理服务（tsnet 提供）
-    go s.srv.ServeSOCKS5(ln, "")
+    s.socksSrv = &socks5.Server{
+        Dialer: func(ctx context.Context, network, addr string) (net.Conn, error) {
+            return s.srv.Dial(ctx, network, addr)
+        },
+    }
+    go s.socksSrv.Serve(ln)
     return ln.Addr().String(), nil
 }
+
+// StopSOCKS5 停止本地 SOCKS5 代理。
+func (s *Server) StopSOCKS5() { /* 关闭 listener，清空地址 */ }
+
+// SOCKS5Addr 返回当前监听地址，未启动返回空串。
+func (s *Server) SOCKS5Addr() string { /* ... */ }
 
 // Status 返回当前状态字符串："running" / "stopped" / "error"
 func (s *Server) Status() string {
@@ -196,7 +237,9 @@ func (s *Server) TailnetIP() string {
 }
 ```
 
-> 注：`tsnet.Server` 的 `ServeSOCKS5` 方法在 tsnet 中提供，认证用户名固定为 `tsnet`，密码为空（无需密码）。若需要密码可设置 `Server.ProxyCred`。
+> 注：**实际实现未使用 `ServeSOCKS5`**，而是用 `tailscale.com/net/socks5.Server` + `tsnet.Server.Dial`，无需认证，仅监听 `127.0.0.1`。另外 `SetNetworkInfo` 会注册 `netmon.RegisterInterfaceGetter`，在 Go 侧合成 loopback + 注入的移动网络接口；这是 Android 上避免 netmon panic 的关键。
+>
+> 本段代码仍保留设计形态，完整实现见工作区根 `tsnet-android/server.go`。
 
 ### 4.3 gomobile bind 构建命令
 
@@ -205,11 +248,11 @@ func (s *Server) TailnetIP() string {
 go install golang.org/x/mobile/cmd/gomobile@latest
 gomobile init
 
-# 2. 构建 AAR（arm64-v8a，与 anrdp 一致）
+# 2. 构建 AAR（arm64-v8a，与 anrdp 一致；实际使用 androidapi 21）
 cd tsnet-android
 ANDROID_HOME=/path/to/android-sdk \
 gomobile bind -target=android/arm64 \
-  -androidapi 29 \
+  -androidapi 21 \
   -o ../anrdp/app/libs/tsnet.aar \
   .
 ```
@@ -222,9 +265,10 @@ gomobile bind -target=android/arm64 \
 
 | 组件 | 版本 | 说明 |
 | --- | --- | --- |
-| Tailscale / tsnet | 1.98.x（稳定版） | 随 Headscale 版本选择兼容版本 |
-| Go | 1.22+ | gomobile 要求 |
+| Tailscale / tsnet | **1.104.0** | 实际构建所用版本（见 `tsnet-android/go.mod`） |
+| Go | **1.27.1** | 实际构建所用版本 |
 | gomobile | latest | `go install golang.org/x/mobile/cmd/gomobile@latest` |
+| Android API | 21 | `gomobile bind -androidapi 21`（应用 minSdk 29） |
 | Headscale | 0.29.x | 稳定版，API 兼容 |
 
 ---
@@ -239,9 +283,10 @@ gomobile bind -target=android/arm64 \
 | --- | --- | --- |
 | id | Long | 主键，自增 |
 | name | String | 配置显示名 |
-| controlUrl | String | Headscale 服务器 URL，如 `https://headscale.example.com` |
+| controlURL | String | Headscale 服务器 URL，如 `https://headscale.example.com` |
 | authKey | String | Headscale pre-auth key（节点注册凭证） |
 | hostname | String | 本设备在 tailnet 中的节点名 |
+| stateDir | String | tsnet 状态目录；空串时由管理器生成 `filesDir/tailscale-state-<id>` |
 | createdAt | Long | 创建时间戳 |
 
 **修改** `ConnectionEntity` 增加字段：
@@ -250,16 +295,18 @@ gomobile bind -target=android/arm64 \
 | --- | --- | --- |
 | tailscaleConfigId | Long | 绑定的 Tailscale 配置 ID，`0` = 不使用 Tailscale（直连） |
 
-**DAO** `TailscaleConfigDao`：`observeAll()`、`getById()`、`insert`、`update`、`delete`。
+**DAO** `TailscaleConfigDao`：`observeAll()`、`getAll()`、`getById()`、`insert`、`update`、`delete`。
+
+数据库版本升至 **v4**：`MIGRATION_2_3` 建表，`MIGRATION_3_4` 给 `connections` 加 `tailscaleConfigId INTEGER NOT NULL DEFAULT 0`。
 
 > 安全说明：authKey 以明文存于 Room，与 RDP 密码策略一致；authKey 本身是一次性/可过期凭证，风险可控。
 
-### 5.2 Tailscale 配置管理页 `TailscaleConfigActivity`
+### 5.2 Tailscale 配置页 `TailscaleConfigEditActivity`（实际实现）
 
-- 列表展示已保存的 Tailscale 配置（名称 / controlUrl / hostname）
-- 新建/编辑表单：名称、Headscale URL、auth key、节点名
-- 校验：controlUrl 非空且为合法 URL、authKey 非空、hostname 非空
-- 点击配置 → 启动 tsnet（测试连通性），显示虚拟 IP
+- 入口：主界面左下 FAB；已有配置时打开最近创建的一条并回填，否则新建。
+- 表单：名称、Headscale 控制面 URL、pre-auth key、节点名；`stateDir` 自动生成。
+- 校验：名称 / 控制面 URL / authKey 非空，错误显示在 `TextInputLayout.error`。
+- 保存后 `finish()`；没有配置列表、删除与「测试连通性 / 显示虚拟 IP」入口（属待办）。
 
 ### 5.3 连接编辑页改造 `ConnectionEditActivity`
 
@@ -270,33 +317,27 @@ gomobile bind -target=android/arm64 \
 
 ### 5.4 Tailscale 管理器 `TailscaleManager`
 
-应用层唯一入口，封装对 tsnet AAR 的调用：
+应用层唯一入口，封装对 tsnet AAR 的调用。实际 API（`com.anrdp.tailscale.TailscaleManager`，`object` 单例）：
 
 ```kotlin
 object TailscaleManager {
-    private var server: TsnetServer? = null
-    private var socks5Address: String? = null
-    private val _status = MutableStateFlow<TailscaleStatus>(TailscaleStatus.Stopped)
-    val status: StateFlow<TailscaleStatus> = _status
-
-    /** 启动 tsnet，返回 SOCKS5 代理地址（host:port） */
-    suspend fun start(context: Context, config: TailscaleConfigEntity): Result<String>
-
-    /** 停止 tsnet */
+    suspend fun start(context: Context, config: TailscaleConfigEntity) // 注入网络信息 + NewServer + Start
+    suspend fun startSOCKS5(): String          // 返回 host:port，已启动则复用
+    suspend fun stopSOCKS5()
+    suspend fun status(): String               // running / starting / stopped / error
+    suspend fun tailnetIP(): String            // 未就绪返回 ""
     suspend fun stop()
-
-    /** 获取当前 SOCKS5 代理地址，未启动返回 null */
     fun socks5Address(): String?
+    fun isRunning(): Boolean
 }
-
-enum class TailscaleStatus { Stopped, Starting, Running, Error }
 ```
 
 关键点：
-- `TsnetServer` 是 gomobile 生成的 Java 类，对应 Go wrapper 的 `Server`
-- `Start()` 是阻塞调用，必须在后台线程（Coroutine）执行
-- SOCKS5 代理监听在 `127.0.0.1:随机端口`，只接受本地连接
-- 状态通过 `Server.Status()` 轮询或回调更新
+- 所有 gomobile JNI 调用都是阻塞的，统一 `withContext(Dispatchers.IO)` + `Mutex` 串行化
+- 启动前从 `ConnectivityManager` 读取活动网络的接口名 / 地址 / 默认网关，调用 `Tsnetandroid.setNetworkInfo`
+- `stateDir` 为空时生成 `filesDir/tailscale-state-<id>`；tsnet 日志写到该目录 `tsnet.log`
+- 单实例：同一时间只运行一个 tsnet 节点；SOCKS5 监听 `127.0.0.1:随机端口`，仅本地可用
+- 启动失败时 `close()` 清理并附带 `tsnet.log` 尾部抛异常
 
 ### 5.5 RDP 连接流程改造 `RdpConnector`
 
@@ -311,7 +352,7 @@ conn.tailscaleConfigId == 0 ?
   └─ 否 → TailscaleManager.start(config)
             │
             ▼
-         等待状态变为 Running（超时 15s），获取 socks5Address
+         等待状态变为 Running（实际 60s，每 500ms 轮询），获取 socks5Address
             │
             ├─ 成功 → 构建 freerdp:// URI，追加 ?proxy=socks5://localhost:port
             │         host 字段填目标主机的 Tailscale 虚拟 IP
@@ -385,9 +426,11 @@ Windows 目标主机安装 Tailscale 客户端，登录同一 Headscale 服务�
 
 tsnet 运行在应用进程内，通过普通 socket 通信，不需要任何特殊权限。
 
-### 7.2 前台服务（可选但推荐）
+### 7.2 前台服务（**当前未实现**）
 
-tsnet 启动后是长连接，为防止系统杀后台，建议用前台 Service 承载：
+tsnet 启动后是长连接。当前实现直接运行在应用进程内，**没有前台 Service**；应用退到后台较久时进程可能被系统回收，RDP 随之中断。
+
+若后续实现，需增加：
 
 ```xml
 <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
@@ -400,7 +443,7 @@ tsnet 启动后是长连接，为防止系统杀后台，建议用前台 Service
     android:foregroundServiceType="specialUse" />
 ```
 
-> 注：当前 anrdp Manifest 中 `POST_NOTIFICATIONS` 被 `tools:node="remove"` 移除，需加回。
+> 注：当前 anrdp Manifest 中 `POST_NOTIFICATIONS` 被 `tools:node="remove"` 移除；启用前台服务时需加回，并同步更新 README 权限表。
 
 ---
 
@@ -413,43 +456,26 @@ dependencies {
     // 现有：freeRDPCore AAR
     implementation files('libs/freeRDPCore-release.aar')
 
-    // 新增：tsnet AAR（由 scripts/build-tsnet-aar.sh 产出）
+    // 新增：tsnet AAR（手工 gomobile bind 产出，仓库已附带）
     implementation files('libs/tsnet.aar')
 
     // ... 其他依赖不变
 }
 ```
 
-### 8.2 tsnet AAR 构建脚本
+### 8.2 tsnet AAR 构建（**无仓库内脚本**）
 
-新增 `scripts/build-tsnet-aar.sh`：
+设计中的 `scripts/build-tsnet-aar.sh` 未实现。实际构建手工执行：
 
 ```bash
-#!/bin/bash
-# 构建 tsnet-android AAR，产出到 app/libs/tsnet.aar
-set -e
-
-TSNET_VERSION=1.98.1
-ANDROID_API=29
-ABI=arm64
-
-export GOPROXY=https://proxy.golang.org,direct
-# 网络受限时用代理：export HTTPS_PROXY=socks5://192.168.56.1:1080
-
-# 拉取 tsnet-android wrapper 源码
-if [ ! -d tsnet-android ]; then
-    git clone https://github.com/your-org/tsnet-android.git
-fi
 cd tsnet-android
-go mod download
-
-# 构建 AAR
-gomobile bind \
-    -target=android/$ABI \
-    -androidapi $ANDROID_API \
-    -o ../anrdp/app/libs/tsnet.aar \
-    .
+go mod download                    # 需代理
+gomobile bind -target=android/arm64 -androidapi=21 \
+  -o ../anrdp/app/libs/tsnet.aar .
+cp tsnet-sources.jar ../anrdp/app/libs/   # 若在同一目录生成
 ```
+
+构建依赖 Go 1.27.1 + gomobile + Android SDK/NDK；`tsnet-android/` 不在 anrdp 仓库中，也没有 `TSNET_VERSION` 变量（版本由 `go.mod` 锁定为 v1.104.0）。
 
 ### 8.3 与 freeRDPCore 的共存
 
@@ -464,10 +490,11 @@ gomobile bind \
 
 | 风险 | 影响 | 对策 |
 | --- | --- | --- |
-| **gomobile bind 兼容性** | tsnet API 复杂导致 bind 失败或 AAR 体积过大 | 用薄 Go wrapper 封装，只暴露必要 API；AAR 预计 15-25MB |
-| **tsnet AAR 体积** | APK 增大 15-25MB | 仅打包 arm64-v8a；可接受（freeRDPCore 已 29MB） |
-| **FreeRDP SOCKS5 认证** | tsnet SOCKS5 可能需要认证 | tsnet 的 ServeSOCKS5 第二参数传空字符串表示无认证；若需认证，FreeRDP 支持 `socks5://user:pass@host:port` |
-| **tsnet 后台被杀** | RDP 连接中断 | 前台 Service + START_STICKY；RDP 连接期间保持 tsnet 运行 |
+| **gomobile bind 兼容性** | tsnet API 复杂导致 bind 失败或 AAR 体积过大 | 已用薄 Go wrapper 封装，只暴露必要 API；实际 AAR 15MB |
+| **tsnet AAR 体积** | APK 增大 15-25MB | 实测 `libgojni.so` 30.5MB，release APK ≈46MB；仅 arm64-v8a |
+| **FreeRDP SOCKS5 认证** | tsnet SOCKS5 可能需要认证 | 实际用 `socks5.Server` 无认证；若需认证，FreeRDP 支持 `socks5://user:pass@host:port` |
+| **tsnet 后台被杀** | RDP 连接中断 | **尚未实现前台 Service**；RDP 连接期间尽量保持应用前台（待补 R11） |
+| **Android netlink 权限 / netmon panic** | 启动时 native panic，进程被杀 | 已实现：`ConnectivityManager` 注入网络信息 + `netmon.RegisterInterfaceGetter` + Go `recover` |
 | **pre-auth key 泄露** | 他人可注册节点加入 tailnet | key 可设置过期时间、单用途；存储在应用私有目录 |
 | **Headscale 服务器不可达** | 无法注册节点 | 连接失败提示用户检查 controlUrl；支持配置多个 Headscale URL |
 | **P2P 打洞失败** | RDP 走 DERP 中继，延迟高 | 属正常降级；DERP 可自建降低延迟 |
@@ -482,19 +509,19 @@ gomobile bind \
 - **WireGuard**：GPL-2.0（内核模块）/ MIT（go 实现 wireguard-go）。tsnet 用的是 **wireguard-go**（MIT），无传染。
 - **gomobile 生成物**：BSD 风格许可证。
 
-整体许可证对 anrdp 友好，无 GPL 传染风险。需在 `THIRD_PARTY_NOTICES.md` 中补充 Tailscale、wireguard-go、gomobile 的许可证声明。
+整体许可证对 anrdp 友好，无 GPL 传染风险。**2026-11-08 已在 `THIRD_PARTY_NOTICES.md` 补充 Tailscale/tsnet（BSD-3-Clause）、wireguard-go（MIT）、gVisor（Apache-2.0）、Go 运行时与 gomobile（BSD-3-Clause）的声明**；`SOURCE.md` 同时补充了组件源码地址。
 
 ---
 
 ## 11. 里程碑（建议，不含时间估算）
 
-1. **tsnet AAR 构建**：编写 Go wrapper，用 gomobile bind 产出 `tsnet.aar`，验证基本 API 可调用
-2. **tsnet 启停验证**：在 anrdp 中调用 TsnetServer.Start()，用 pre-auth key 注册到 Headscale，获取虚拟 IP
-3. **SOCKS5 代理验证**：启动 tsnet SOCKS5，用其他工具（如 curl）通过代理访问 tailnet 内主机
-4. **RDP 联动**：RdpConnector 注入 `/proxy:socks5://`，端到端验证"启 tsnet → RDP 连虚拟 IP"
-5. **UI 与数据层**：TailscaleConfigActivity、ConnectionEntity 增加 tailscaleConfigId、编辑页下拉选择
-6. **前台服务与稳定性**：TailscaleService 前台化、异常恢复、状态展示
-7. **收尾**：APK 体积评估、许可文档、权限声明
+1. ✅ **tsnet AAR 构建**：Go wrapper + `gomobile bind` 产出 `tsnet.aar`（2026-11-08）
+2. 🟡 **tsnet 启停验证**：应用内可启动并注册到 Headscale；**真机 tailnet 端到端待验证**
+3. ✅ **SOCKS5 代理**：`StartSOCKS5` 已实现并由 RDP 连接使用
+4. 🟡 **RDP 联动**：`/proxy:socks5://` 注入已完成；待真机验证「启 tsnet → RDP 连虚拟 IP」
+5. ✅ **UI 与数据层**：`TailscaleConfigEditActivity`、`tailscaleConfigId`、编辑页下拉（单配置版）
+6. ❌ **前台服务与稳定性**：未实现；异常恢复已有 recover + 日志
+7. 🟡 **收尾**：APK 体积已评估（≈46MB）；许可文档与权限声明已更新；**改动尚未提交**
 
 ---
 

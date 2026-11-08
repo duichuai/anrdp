@@ -86,6 +86,9 @@ dependencies {
     // 注意：本地 AAR 不解析传递依赖，freeRDPCore 自身的运行时依赖需在下方显式声明。
     implementation files('libs/freeRDPCore-release.aar')
 
+    // Tailscale tsnet 嵌入库（由 tsnet-android 模块 gomobile bind 产出）
+    implementation files('libs/tsnet.aar')
+
     implementation 'androidx.appcompat:appcompat:1.7.1'
     implementation 'androidx.core:core-ktx:1.18.0'
     implementation 'com.google.android.material:material:1.14.0'

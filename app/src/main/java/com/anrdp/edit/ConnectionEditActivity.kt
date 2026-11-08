@@ -1,13 +1,17 @@
 package com.anrdp.edit
 
 import android.os.Bundle
+import android.view.View
+import android.widget.AdapterView
 import android.widget.ArrayAdapter
+import android.widget.Spinner
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import com.anrdp.R
 import com.anrdp.data.AppDatabase
 import com.anrdp.data.ConnectionEntity
+import com.anrdp.data.TailscaleConfigEntity
 import com.anrdp.databinding.ActivityConnectionEditBinding
 import kotlinx.coroutines.launch
 
@@ -24,6 +28,8 @@ class ConnectionEditActivity : AppCompatActivity() {
     private var editing: ConnectionEntity? = null
     private lateinit var resolutionLabels: Array<String>
     private lateinit var resolutionValues: Array<String>
+    private var tailscaleConfigs: List<TailscaleConfigEntity> = emptyList()
+    private var selectedTailscaleId: Long = 0
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -40,18 +46,49 @@ class ConnectionEditActivity : AppCompatActivity() {
         )
         selectResolution(ConnectionEntity.RESOLUTION_ADAPTIVE)
 
+        binding.btnSave.setOnClickListener { save() }
+
+        // 顺序加载：先取 Tailscale 配置，再取连接回显，避免异步竞态覆盖 selectedTailscaleId
         val id = intent.getLongExtra(EXTRA_CONNECTION_ID, -1L)
         val copyFromId = intent.getLongExtra(EXTRA_COPY_FROM_ID, -1L)
-        when {
-            copyFromId > 0 -> lifecycleScope.launch {
-                db.connectionDao().getById(copyFromId)?.let { fillForm(it, copy = true) }
-            }
-            id > 0 -> lifecycleScope.launch {
-                db.connectionDao().getById(id)?.let { fillForm(it, copy = false) }
-            }
-        }
+        lifecycleScope.launch {
+            val configs = db.tailscaleConfigDao().getAll()
+            tailscaleConfigs = configs
+            setupTailscaleSpinner(configs)
 
-        binding.btnSave.setOnClickListener { save() }
+            val entity = when {
+                copyFromId > 0 -> db.connectionDao().getById(copyFromId)
+                id > 0 -> db.connectionDao().getById(id)
+                else -> null
+            }
+            if (entity != null) fillForm(entity, copy = copyFromId > 0)
+        }
+    }
+
+    /** 设置 Tailscale 配置下拉框；在协程内同步设置选中项，避免回调覆盖 selectedTailscaleId */
+    private fun setupTailscaleSpinner(configs: List<TailscaleConfigEntity>) {
+        val items = mutableListOf("不使用 Tailscale（直连）")
+        items.addAll(configs.map { "${it.name} (${it.controlURL})" })
+        val adapter = ArrayAdapter(
+            this,
+            android.R.layout.simple_spinner_item,
+            items
+        )
+        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        binding.spinTailscale.adapter = adapter
+
+        // 先设置 listener，再 setSelection，确保回调正常更新 selectedTailscaleId
+        binding.spinTailscale.onItemSelectedListener =
+            object : AdapterView.OnItemSelectedListener {
+                override fun onItemSelected(p: AdapterView<*>?, v: View?, pos: Int, id: Long) {
+                    selectedTailscaleId = if (pos == 0) 0 else configs[pos - 1].id
+                }
+
+                override fun onNothingSelected(p: AdapterView<*>?) {
+                    selectedTailscaleId = 0
+                }
+            }
+        binding.spinTailscale.setSelection(0)
     }
 
     /** 回显连接配置；copy=true 时作为复制模板，保存时新建而非覆盖 */
@@ -70,6 +107,13 @@ class ConnectionEditActivity : AppCompatActivity() {
         binding.etPassword.setText(entity.password)
         binding.etDomain.setText(entity.domain)
         selectResolution(entity.resolution)
+
+        // 回显 Tailscale 选中项：根据 tailscaleConfigId 找到对应位置
+        val idx = tailscaleConfigs.indexOfFirst { it.id == entity.tailscaleConfigId }
+        val pos = if (idx >= 0) idx + 1 else 0
+        binding.spinTailscale.setSelection(pos)
+        selectedTailscaleId = entity.tailscaleConfigId
+
         supportActionBar?.setTitle(
             if (copy) R.string.title_copy_connection else R.string.title_edit_connection
         )
@@ -101,6 +145,7 @@ class ConnectionEditActivity : AppCompatActivity() {
             domain = binding.etDomain.text.toString().trim(),
             resolution = resolutionValues.getOrNull(resolutionIndex)
                 ?: ConnectionEntity.RESOLUTION_ADAPTIVE,
+            tailscaleConfigId = selectedTailscaleId,
             createdAt = old?.createdAt ?: System.currentTimeMillis(),
             lastUsedAt = old?.lastUsedAt ?: 0
         )

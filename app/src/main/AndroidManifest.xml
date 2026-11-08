@@ -36,5 +36,10 @@
             android:name=".edit.ConnectionEditActivity"
             android:exported="false"
             android:windowSoftInputMode="adjustResize" />
+
+        <activity
+            android:name=".tailscale.TailscaleConfigEditActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
     </application>
 </manifest>

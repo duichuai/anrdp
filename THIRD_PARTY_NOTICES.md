@@ -20,14 +20,23 @@ AnRDP（下称“本项目”）的分发物包含下列第三方软件。本文
 | Material Components for Android | 1.14.0 | Apache-2.0 | dex |
 | Kotlin 标准库、kotlinx-coroutines | 见 `app/build.gradle` | Apache-2.0 | dex |
 | Gradle Wrapper | 9.6.1 | Apache-2.0 | `gradle/wrapper/gradle-wrapper.jar` |
+| Tailscale / tsnet | 1.104.0 | BSD-3-Clause | 静态链接进 `libgojni.so`（`app/libs/tsnet.aar`） |
+| wireguard-go（tailscale fork） | 随 tsnet 1.104.0 | MIT | 静态链接进 `libgojni.so` |
+| gVisor netstack | 随 tsnet 1.104.0 | Apache-2.0 | 静态链接进 `libgojni.so` |
+| Go 运行时 / 标准库 | 1.27.1 | BSD-3-Clause | 静态链接进 `libgojni.so` |
+| gomobile / gobind 生成代码 | latest | BSD-3-Clause | `classes.jar`（`tsnet.aar`） |
 
-> 完整的传递依赖清单可在仓库根目录执行 `./gradlew :app:dependencies --configuration releaseRuntimeClasspath` 获取；其中 AndroidX、Kotlin 相关依赖均为 Apache-2.0。
+> 完整的传递依赖清单可在仓库根目录执行 `./gradlew :app:dependencies --configuration releaseRuntimeClasspath` 获取；其中 AndroidX、Kotlin 相关依赖均为 Apache-2.0。tsnet 的 Go 依赖清单见 `tsnet-android/go.mod` / `go.sum`。
 
 ## 2. 关于 FreeRDP 引擎的修改
 
 分发所用的 `app/libs/freeRDPCore-release.aar` 由 FreeRDP 3.33.0 源码构建。构建期共应用 9 处补丁，均为构建配置与依赖镜像版本调整，**未修改任何 `.java` / `.kt` 源文件**。补丁清单见 [SOURCE.md](SOURCE.md)，可执行实现见 [`scripts/build-freerdpcore-aar.sh`](scripts/build-freerdpcore-aar.sh)。
 
 受 MPL-2.0 覆盖的源码获取方式见 [SOURCE.md](SOURCE.md)。
+
+## 2.1 关于 tsnet AAR 的修改
+
+`app/libs/tsnet.aar` 由工作区根目录 `tsnet-android/` 的薄 Go wrapper 构建，**未修改 tailscale.com、wireguard-go、gVisor 或 Go 运行时的上游源码**；wrapper 仅调用 tsnet 公开 API，并注册 `netmon.RegisterInterfaceGetter` 以在 Android 上注入网络信息。构建命令与版本见 [SOURCE.md](SOURCE.md) §3。
 
 ## 3. Apache-2.0 组件的版权归属
 
@@ -520,3 +529,104 @@ SQLCipher for Android 4.17.0（Community Edition）在 `libsqlcipher.so` 中静�
 
 - SQLite 3.53.3 —— SQLite 源码已由作者声明为公有领域。
 - LibTomCrypt 1.18.2 —— 公有领域。
+
+## 9. BSD 3-Clause License —— Tailscale / tsnet
+
+`libgojni.so` 静态包含 Tailscale 的 tsnet 库。版权与条款如下：
+
+```text
+Copyright (c) 2020 Tailscale Inc & contributors.
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+1. Redistributions of source code must retain the above copyright notice, this
+   list of conditions and the following disclaimer.
+
+2. Redistributions in binary form must reproduce the above copyright notice,
+   this list of conditions and the following disclaimer in the documentation
+   and/or other materials provided with the distribution.
+
+3. Neither the name of the copyright holder nor the names of its
+   contributors may be used to endorse or promote products derived from
+   this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+```
+
+## 10. MIT License —— wireguard-go
+
+`libgojni.so` 静态包含 wireguard-go（Tailscale fork）。上游 LICENSE 未单列版权行，条款如下：
+
+```text
+MIT License
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+## 11. Apache-2.0 —— gVisor netstack
+
+`libgojni.so` 静态包含 gVisor 的用户态网络栈（netstack）。Apache-2.0 完整条款见仓库根目录 [LICENSE](LICENSE)。
+
+- 版权：Copyright 2018 The gVisor Authors.
+- 上游声明：https://github.com/google/gvisor/blob/master/LICENSE
+
+## 12. BSD 3-Clause License —— Go 运行时 / 标准库 / gomobile
+
+`libgojni.so` 与 `tsnet.aar` 的 `classes.jar` 包含 Go 运行时、标准库、`golang.org/x` 与 gomobile/gobind 生成代码。版权与条款如下（Go 项目另有附加专利授权，见 https://go.dev/LICENSE ）：
+
+```text
+Copyright (c) 2009 The Go Authors. All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are
+met:
+
+   * Redistributions of source code must retain the above copyright
+     notice, this list of conditions and the following disclaimer.
+   * Redistributions in binary form must reproduce the above
+     copyright notice, this list of conditions and the following disclaimer
+     in the documentation and/or other materials provided with the
+     distribution.
+   * Neither the name of Google Inc. nor the names of its
+     contributors may be used to endorse or promote products derived from
+     this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+"AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+```
