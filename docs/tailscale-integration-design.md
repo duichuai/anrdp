@@ -19,7 +19,7 @@
 | 就绪等待 | 15s | **60s**（每 500ms 轮询） |
 | 前台服务 | 建议实现 | **未实现**；tsnet 随应用进程存活 |
 | 构建脚本 | `scripts/build-tsnet-aar.sh` | 已提供 `scripts/build-tsnet-aar.sh`（提交 `f7ebaed`） |
-| 产物体积 | AAR 15–25MB | `tsnet.aar` 15MB，`libgojni.so` 30.5MB；release APK ≈46MB |
+| 产物体积 | AAR 15–25MB | `tsnet.aar` **7.0MB**（`libgojni.so` 19MB 未压缩），release APK **≈35MB**（已用 `-ldflags="-s -w"` + `ts_omit_*` 裁剪） |
 
 已完成：Go wrapper、tsnet AAR、数据层（DB v4）、配置页、连接绑定与 SOCKS5 联动、错误回传。待办：真机 tailnet 端到端验证、前台服务、多配置管理页、状态展示。
 
@@ -253,9 +253,29 @@ cd tsnet-android
 ANDROID_HOME=/path/to/android-sdk \
 gomobile bind -target=android/arm64 \
   -androidapi 21 \
+  -trimpath \
+  -ldflags="-s -w" \
+  -tags="ts_omit_drive ts_omit_aws ts_omit_tailnetlock ts_omit_syspolicy \
+         ts_omit_tpm ts_omit_routecheck ts_omit_captiveportal ts_omit_ssh \
+         ts_omit_taildrop ts_omit_wakeonlan ts_omit_portlist ts_omit_posture \
+         ts_omit_clientmetrics ts_omit_usermetrics ts_omit_netlog ts_omit_runtimemetrics \
+         ts_omit_logtail ts_omit_health ts_omit_peerapiserver ts_omit_peerapiclient \
+         ts_omit_identityfederation ts_omit_remoteconfig ts_omit_dns ts_omit_oauthkey" \
   -o ../anrdp/app/libs/tsnet.aar \
   .
 ```
+
+> **体积优化说明**（2026-11-08 实测）：
+> - `-ldflags="-s -w"`：剥离符号表与 DWARF，AAR 15MB → 7.8MB（最大收益，省约 7MB）
+> - `-trimpath`：移除编译路径信息
+> - `-tags ts_omit_*`：裁剪 app 用不到的 Tailscale 特性，再省约 0.8MB
+> - 最终 `tsnet.aar` **7.0MB**（`libgojni.so` 19MB 未压缩），release APK **35MB**（原 46MB，减 11MB / 24%）
+>
+> **不能裁剪的特性**：
+> - `ts_omit_serve`：`tsnet.go` 直接引用 `ServeConfig`，会编译失败
+> - `ts_omit_netstack`：SOCKS5 用户态转发依赖 netstack（gVisor）
+>
+> **未采用 UPX**：UPX `--android-shlib` 可将 `libgojni.so` 19MB → 15MB，但 Android 10+（API 29+）的 W^X 内存保护可能导致运行时加载失败，兼容性风险大于体积收益，故不启用。
 
 产物：`tsnet.aar` + `tsnet-sources.jar`，放入 `anrdp/app/libs/`，与 `freeRDPCore-release.aar` 同级。
 
@@ -488,8 +508,8 @@ scripts/build-tsnet-aar.sh
 
 | 风险 | 影响 | 对策 |
 | --- | --- | --- |
-| **gomobile bind 兼容性** | tsnet API 复杂导致 bind 失败或 AAR 体积过大 | 已用薄 Go wrapper 封装，只暴露必要 API；实际 AAR 15MB |
-| **tsnet AAR 体积** | APK 增大 15-25MB | 实测 `libgojni.so` 30.5MB，release APK ≈46MB；仅 arm64-v8a |
+| **gomobile bind 兼容性** | tsnet API 复杂导致 bind 失败或 AAR 体积过大 | 已用薄 Go wrapper 封装，只暴露必要 API；优化后 AAR 7.0MB |
+| **tsnet AAR 体积** | APK 增大 | 已优化：`-ldflags="-s -w"` + `ts_omit_*` 裁剪，`libgojni.so` 30.5MB → 19MB，release APK 46MB → 35MB；仅 arm64-v8a |
 | **FreeRDP SOCKS5 认证** | tsnet SOCKS5 可能需要认证 | 实际用 `socks5.Server` 无认证；若需认证，FreeRDP 支持 `socks5://user:pass@host:port` |
 | **tsnet 后台被杀** | RDP 连接中断 | **尚未实现前台 Service**；RDP 连接期间尽量保持应用前台（待补 R11） |
 | **Android netlink 权限 / netmon panic** | 启动时 native panic，进程被杀 | 已实现：`ConnectivityManager` 注入网络信息 + `netmon.RegisterInterfaceGetter` + Go `recover` |
@@ -519,7 +539,7 @@ scripts/build-tsnet-aar.sh
 4. 🟡 **RDP 联动**：`/proxy:socks5://` 注入已完成；待真机验证「启 tsnet → RDP 连虚拟 IP」
 5. ✅ **UI 与数据层**：`TailscaleConfigEditActivity`、`tailscaleConfigId`、编辑页下拉（单配置版）
 6. ❌ **前台服务与稳定性**：未实现；异常恢复已有 recover + 日志
-7. ✅ **收尾**：APK 体积已评估（≈46MB）；许可文档、权限声明与 wrapper/脚本已提交（`02a0d91` / `f7ebaed`）
+7. ✅ **收尾**：APK 体积已优化（**≈35MB**，原 46MB）；许可文档、权限声明与 wrapper/脚本已提交（`02a0d91` / `f7ebaed`）
 
 ---
 

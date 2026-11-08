@@ -105,7 +105,7 @@ RdpConnector ──startActivity──▶ SessionActivity（AAR）
 | UI | ViewBinding + Material 3（`material:1.14.0`）、AppCompat |
 | 数据 | Room 2.8.5（KSP）、coroutines 1.11.0；数据库 `anrdp.db` v4 |
 | 引擎 | `freeRDPCore-release.aar`（4.8MB，含 `libfreerdp3`、`libwinpr3`、`libssl`、`libcrypto`、`libsqlcipher` 等） |
-| 组网 | `tsnet.aar`（15MB，`tailscale.com` v1.104.0 + Go 1.27.1，含 `libgojni.so` 30.5MB，`minSdk 21`） |
+| 组网 | `tsnet.aar`（**7.0MB**，`tailscale.com` v1.104.0 + Go 1.27.1，含 `libgojni.so` 19MB，`minSdk 21`；已用 `-ldflags="-s -w"` + `ts_omit_*` 裁剪，详见 `docs/tailscale-integration-design.md` §4.3） |
 | 签名 | 固定 release keystore（PKCS12，别名 `androiddebugkey`），由 `keystore.properties` 提供，密钥与口令不入库 |
 | 构建内存约束 | `-Xmx1408m`、`workers.max=1`、`parallel=false`（构建机内存有限） |
 
@@ -384,9 +384,9 @@ scripts/build-app.sh [debug|release]
 
 | 项 | debug | release |
 | --- | --- | --- |
-| 体积 | 29MB（v2 基线，未含 tsnet；当前未重测） | 约 46MB（含 tsnet，v1.0.1 实测） |
+| 体积 | 29MB（v2 基线，未含 tsnet；当前未重测） | **约 35MB**（含 tsnet，v1.0.1 优化后实测；原 46MB） |
 | dex | 14.4MB（未压缩） | 2.5MB（R8 收缩） |
-| 原生库 | 12.5MB | 约 42MB（引擎 12.5MB + `libgojni.so` 30.5MB） |
+| 原生库 | 12.5MB | 约 31MB（引擎 12.5MB + `libgojni.so` 19MB） |
 | 签名 | debug keystore | **固定 release keystore**（PKCS12，别名 `androiddebugkey`，沿用旧版 debug 密钥副本）；读取顺序：仓库根 `keystore.properties` → `../anrdp-secrets/keystore.properties` → 两者都缺失时回落 debug 签名；本机与 CI 使用同一把密钥，旧包可直接覆盖升级 |
 | 调试 | `jniDebuggable true` | 关闭 |
 | 优化 | 无 | `minifyEnabled` + `shrinkResources` |
@@ -457,14 +457,14 @@ D2:F9:B6:18:C2:F2:FA:04:53:B0:05:96:94:6B:93:1A:CB:
 | R11 | tsnet 无常驻前台服务 | 应用退到后台久了进程被回收，RDP 断开 | 后续加前台服务（需 `FOREGROUND_SERVICE` 与通知权限）或连接期间保持前台 |
 | R12 | 单 tsnet 实例 / 单配置快捷编辑 | 无法同时使用多个 tailnet 节点，无法在 UI 删除配置 | DAO 已支持多配置；后续补配置列表、切换与删除 |
 | R13 | pre-auth key 明文入库 | 本地取证可读 | 使用一次性/短期 key；与 R1 一并做 Keystore 加密 |
-| R14 | tsnet 使 APK 增大约 30.5MB | 安装包体积偏大 | 按 ABI 分包或改为可选特性交付 |
+| R14 | tsnet 使 APK 增大 | 安装包体积偏大 | 已优化：`-ldflags="-s -w"` + `ts_omit_*` 裁剪，`libgojni.so` 30.5MB → 19MB，APK 46MB → 35MB；后续可按 ABI 分包 |
 
 ### 9.2 技术债
 
 - URI 作为唯一集成面，能力受限但稳定；若需剪贴板增强、音频、文件传输等高级能力，必须评估改造 AAR 或直接调用 `LibFreeRDP`。
 - 分辨率选项与显示文案靠两个数组索引对齐，新增选项必须同时改两处。
 - 12.5MB 原生库为体积下限；`libsqlcipher`（2.1MB）被引擎数据库使用，裁剪需重编 AAR 并回归。
-- tsnet AAR 由仓库内 `tsnet-android/` Go module 构建，`scripts/build-tsnet-aar.sh` 可重建并同步 `tsnet-sources.jar`。当前仓库内 `tsnet-sources.jar` 仍是早期版本（早于 `setNetworkInfo` 改动），AAR 本体已含该方法；重跑脚本即可回填最新 sources。
+- tsnet AAR 由仓库内 `tsnet-android/` Go module 构建，`scripts/build-tsnet-aar.sh` 可重建并同步 `tsnet-sources.jar`。脚本已固化体积优化参数（`-ldflags="-s -w"` + `-trimpath` + `ts_omit_*` 标签），产出 `tsnet.aar` 7.0MB（`libgojni.so` 19MB）。当前仓库内 `tsnet-sources.jar` 仍是早期版本（早于 `setNetworkInfo` 改动），AAR 本体已含该方法；重跑脚本即可回填最新 sources。
 - `TailscaleManager` 全部 JNI 调用串行化且只支持单实例；未来多节点需要改为按配置 id 管理实例池。
 - tsnet 状态目录（`filesDir/tailscale-state-<id>/`）会持久化节点身份与 `tsnet.log`，卸载应用才清理；暂无「重置节点」入口。
 
@@ -476,7 +476,7 @@ D2:F9:B6:18:C2:F2:FA:04:53:B0:05:96:94:6B:93:1A:CB:
 2. **安全与显示**：密码加密（R1）、限制会话页导出（R2）、insets 适配（R3）。
 3. **日常易用**：搜索/排序/撤销删除（R6）、分辨率与画质档位、记住密码开关。
 4. **工程化**：单元测试（R7）、补 `values-en`；正式签名与 CI 发布已完成（R8）。
-5. **Tailscale 完善**：前台服务保活（R11）、多配置列表/切换/删除（R12）、节点状态页与重置、authKey 加密（R13）、按 ABI 分包（R14）。
+5. **Tailscale 完善**：前台服务保活（R11）、多配置列表/切换/删除（R12）、节点状态页与重置、authKey 加密（R13）、按 ABI 分包进一步减重（R14，当前已优化至 35MB）。
 
 ---
 
