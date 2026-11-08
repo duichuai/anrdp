@@ -51,6 +51,27 @@ jobs:
           fi
           ls "$ANDROID_HOME/platforms" "$ANDROID_HOME/build-tools"
 
+      - name: 准备签名密钥
+        env:
+          KEYSTORE_B64: ${{ secrets.KEYSTORE_B64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ -n "${KEYSTORE_B64:-}" ]; then
+            mkdir -p keystore
+            printf '%s' "$KEYSTORE_B64" | base64 -d > keystore/anrdp-release.jks
+            {
+              echo "storeFile=keystore/anrdp-release.jks"
+              echo "storePassword=$KEYSTORE_PASSWORD"
+              echo "keyAlias=anrdp"
+              echo "keyPassword=${KEY_PASSWORD:-$KEYSTORE_PASSWORD}"
+            } > keystore.properties
+            echo "已注入专用 release 签名密钥"
+          else
+            echo "::warning::未配置 KEYSTORE_B64，本次回退 debug 签名；产物无法覆盖安装本机 release 包"
+          fi
+
       - name: 构建 release APK
         run: |
           set -euo pipefail

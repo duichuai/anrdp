@@ -2,6 +2,15 @@ apply plugin: 'com.android.application'
 // AGP 9.0+ 已内置 Kotlin 支持，无需 apply org.jetbrains.kotlin.android
 apply plugin: 'com.google.devtools.ksp'
 
+// 专用 release 签名：仓库根目录 keystore.properties（不入库，CI 由 Secrets 生成）。
+// 缺失时回退 debug 签名，保证无密钥环境下仍可构建。
+def keystorePropsFile = rootProject.file('keystore.properties')
+def keystoreProps = new Properties()
+if (keystorePropsFile.exists()) {
+    keystorePropsFile.withInputStream { keystoreProps.load(it) }
+}
+def hasReleaseSigning = keystorePropsFile.exists()
+
 android {
     namespace 'com.anrdp'
     compileSdk = rootProject.ext.compileApi
@@ -17,10 +26,22 @@ android {
         ndk { abiFilters rootProject.ext.abiFilters }
     }
 
+    signingConfigs {
+        release {
+            if (hasReleaseSigning) {
+                storeFile rootProject.file(keystoreProps.getProperty('storeFile'))
+                storePassword keystoreProps.getProperty('storePassword')
+                keyAlias keystoreProps.getProperty('keyAlias')
+                keyPassword keystoreProps.getProperty('keyPassword')
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // 内部自用：release 沿用 debug 签名，APK 可直接 adb install -r 覆盖升级
-            signingConfig signingConfigs.debug
+            // 有专用密钥时用固定 release 签名（本机与 CI 一致，可长期覆盖升级）；
+            // 无密钥时回退 debug 签名，仅供临时构建
+            signingConfig hasReleaseSigning ? signingConfigs.release : signingConfigs.debug
             minifyEnabled true
             shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'

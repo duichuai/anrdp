@@ -266,7 +266,7 @@ scripts/build-app.sh [debug|release]
 | 体积 | 29MB | 17MB |
 | dex | 14.4MB（未压缩） | 2.5MB（R8 收缩） |
 | 原生库 | 12.5MB | 12.5MB（不变） |
-| 签名 | debug keystore | **沿用 debug keystore**（可直接覆盖安装，仅限自用） |
+| 签名 | debug keystore | **专用 release keystore**（`keystore.properties` 提供，缺失时回退 debug；本机与 CI 使用同一把密钥） |
 | 调试 | `jniDebuggable true` | 关闭 |
 | 优化 | 无 | `minifyEnabled` + `shrinkResources` |
 
@@ -302,7 +302,7 @@ scripts/build-app.sh [debug|release]
 | R5 | 连接失败无应用层反馈 | 用户只看到会话页停住 | 监听引擎会话事件，回传 Toast/Snackbar |
 | R6 | 无搜索/排序切换/删除撤销 | 连接多时难用 | 搜索框 + Undo（软删除字段） |
 | R7 | 无自动化测试 | 回归靠手工 | 至少补 DB 迁移与 URI 组装的单元测试 |
-| R8 | `versionCode=1`、release 用 debug 签名 | 无法作为正式渠道分发 | 建正式 keystore，CI 注入版本号 |
+| R8 | `versionCode=1`、release 签名依赖本地密钥配置 | 无法作为正式渠道分发 | 提升 versionCode，CI Secrets 注入固定密钥与版本号 |
 
 ### 9.2 技术债
 

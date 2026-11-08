@@ -7,6 +7,11 @@ captures/
 # 机器相关配置（sdk.dir 等，不入库）
 local.properties
 
+# 签名密钥与口令（严禁入库）
+keystore/
+keystore.properties
+*.jks
+
 # 本机环境细节备忘（含内网地址/挂载路径，不随仓库发布）
 LOCAL_ENV.md
 
