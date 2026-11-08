@@ -8,7 +8,7 @@
 # 流程：
 #   1) 把仓库同步到 /tmp 工作区（共享挂载盘（CIFS/vboxsf）不支持符号链接，不能就地构建）
 #   2) 缺少上游源码或依赖镜像时，按版本自动下载
-#   3) 在上游 Studio 工程上打齐 9 处必要补丁（见下方 PATCH 说明）
+#   3) 在上游 Studio 工程上打齐 10 处必要补丁（见下方 PATCH 说明）
 #   4) ./gradlew :freeRDPCore:assembleRelease
 #   5) AAR 回填到 <repo>/app/libs/ 并校验内容
 #
@@ -41,6 +41,10 @@
 #   7. gradle.properties         → 收紧 JVM 堆与并行度（构建机内存有限）
 #   8. *.cmake                   → 本地 mirror 归一化（CMake 4.x 不允许本地路径出现在 URL 列表中）
 #   9. cmake/DepVersions.cmake   → 按环境变量与镜像实际 sha256 锁定依赖版本
+#  10. ClipboardImageProvider   → authority 改为 com.peerrdp.freerdpcore.clipboard（上游硬编码
+#      com.freerdp.freerdpcore.clipboard，任何两个内嵌 freeRDPCore 的应用共存即报
+#      INSTALL_FAILED_CONFLICTING_PROVIDER(-13)；调用方 ClipboardManagerProxy 引用
+#      AUTHORITY/CONTENT_URI 常量，自动跟随，无需修改）
 # =============================================================================
 set -euo pipefail
 
@@ -378,6 +382,23 @@ PY
 grep -q "openssl-$OPENSSL_VERSION" "$DEP_VERSIONS" \
   || die "DepVersions.cmake 未写入 OpenSSL $OPENSSL_VERSION"
 echo "    DepVersions.cmake 已锁定当前版本与镜像哈希"
+
+# ---------------------------------------------------------------- PATCH 10/10
+log "补丁 10/10：ClipboardImageProvider authority → com.peerrdp.freerdpcore.clipboard"
+python3 - "$STUDIO/freeRDPCore/src/main/java/com/freerdp/freerdpcore/utils/ClipboardImageProvider.java" \
+          "$STUDIO/freeRDPCore/src/main/AndroidManifest.xml" <<'PY'
+import sys
+OLD, NEW = 'com.freerdp.freerdpcore.clipboard', 'com.peerrdp.freerdpcore.clipboard'
+for p in sys.argv[1:3]:
+    with open(p, encoding='utf-8') as f:
+        s = f.read()
+    if NEW in s:
+        continue
+    assert OLD in s, f'{p} 缺少预期 authority 字符串（上游结构变化？）'
+    with open(p, 'w', encoding='utf-8') as f:
+        f.write(s.replace(OLD, NEW))
+    print('    patched:', p.rsplit('/', 3)[-3] + '/' + p.rsplit('/', 2)[-2] + '/' + p.rsplit('/', 1)[-1])
+PY
 
 if [[ "${SKIP_BUILD:-0}" == "1" ]]; then
   log "SKIP_BUILD=1：已停在打补丁阶段，未编译"
