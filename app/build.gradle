@@ -11,6 +11,15 @@ if (keystorePropsFile.exists()) {
 }
 def hasReleaseSigning = keystorePropsFile.exists()
 
+// 版本号由构建方注入（CI 按 tag，本地脚本按最近 tag）；未注入时用默认值。
+// versionCode 未显式提供时按 x.y.z → x*10000+y*100+z 推导，保证 tag 递增即 code 递增。
+def appVersionName = (project.findProperty('appVersionName') ?: '1.0.0') as String
+def codeFromName = { String v ->
+    def m = v =~ /^(\d+)\.(\d+)\.(\d+)/
+    m ? (m[0][1] as int) * 10000 + (m[0][2] as int) * 100 + (m[0][3] as int) : 1
+}
+def appVersionCode = (project.findProperty('appVersionCode') ?: codeFromName(appVersionName)) as Integer
+
 android {
     namespace 'com.anrdp'
     compileSdk = rootProject.ext.compileApi
@@ -20,8 +29,8 @@ android {
         applicationId 'com.anrdp'
         minSdk rootProject.ext.minApi
         targetSdk rootProject.ext.targetApi
-        versionCode 1
-        versionName '1.0'
+        versionCode appVersionCode
+        versionName appVersionName
         // freeRDPCore 的 AAR 内含原生库，只保留 arm64-v8a
         ndk { abiFilters rootProject.ext.abiFilters }
     }

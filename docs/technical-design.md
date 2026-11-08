@@ -302,7 +302,7 @@ scripts/build-app.sh [debug|release]
 | R5 | 连接失败无应用层反馈 | 用户只看到会话页停住 | 监听引擎会话事件，回传 Toast/Snackbar |
 | R6 | 无搜索/排序切换/删除撤销 | 连接多时难用 | 搜索框 + Undo（软删除字段） |
 | R7 | 无自动化测试 | 回归靠手工 | 至少补 DB 迁移与 URI 组装的单元测试 |
-| R8 | `versionCode=1`、release 签名依赖本地密钥配置 | 无法作为正式渠道分发 | 提升 versionCode，CI Secrets 注入固定密钥与版本号 |
+| R8 | `versionCode` 由 tag 推导（x.y.z → x*10000+y*100+z） | 无法作为正式渠道分发 | 提升 tag 版本号，CI Secrets 注入固定密钥 |
 
 ### 9.2 技术债
 

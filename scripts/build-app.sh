@@ -82,9 +82,22 @@ printf 'sdk.dir=%s\n' "$ANDROID_HOME" > "$WORKDIR/local.properties"
 # 只需把要被执行的 shell 脚本转回 LF。
 sed -i 's/\r$//' "$WORKDIR/gradlew"
 
+# ---------------------------------------------------------------- 版本号
+# 与 tag 保持一致：取当前提交可达的最近 v* tag；可用 APP_VERSION_NAME 覆盖
+APP_VERSION_NAME="${APP_VERSION_NAME:-}"
+if [[ -z "$APP_VERSION_NAME" ]]; then
+  TAG="$(git -C "$REPO_ROOT" describe --tags --abbrev=0 2>/dev/null || true)"
+  [[ "$TAG" == v* ]] && APP_VERSION_NAME="${TAG#v}"
+fi
+GRADLE_VERSION_ARGS=()
+if [[ -n "$APP_VERSION_NAME" ]]; then
+  GRADLE_VERSION_ARGS=("-PappVersionName=$APP_VERSION_NAME")
+  echo "    VERSION      = $APP_VERSION_NAME"
+fi
+
 # ---------------------------------------------------------------- 编译
 log "执行 :app:$TASK（AGP 9.2.1 + Gradle 9.6.1 + JDK 17，variant=$VARIANT）"
-( cd "$WORKDIR" && ./gradlew ":app:$TASK" --console=plain )
+( cd "$WORKDIR" && ./gradlew ":app:$TASK" --console=plain "${GRADLE_VERSION_ARGS[@]}" )
 
 # ---------------------------------------------------------------- 校验与回填
 APK_OUT="$WORKDIR/app/build/outputs/apk/$VARIANT/app-$VARIANT.apk"
@@ -103,6 +116,12 @@ grep -E 'classes[0-9]*\.dex|lib/arm64-v8a/' <<<"$LISTING"
 
 log "校验权限（引擎 AAR 合并进来的未使用权限应已被 manifest 移除）"
 AAPT2="$ANDROID_HOME/build-tools/37.0.0/aapt2"
+if [[ -n "$APP_VERSION_NAME" ]]; then
+  BADGING="$("$AAPT2" dump badging "$APK_OUT" 2>/dev/null || true)"
+  VERSION="$(sed -n "s/.*versionName='\([^']*\)'.*/\1/p" <<<"$BADGING" | head -1)"
+  [[ "$VERSION" == "$APP_VERSION_NAME" ]] || die "APK 版本号 $VERSION 与 tag 版本 $APP_VERSION_NAME 不一致"
+  echo "    版本号：$VERSION"
+fi
 PERMS="$("$AAPT2" dump permissions "$APK_OUT" 2>/dev/null || true)"
 for p in CAMERA RECORD_AUDIO READ_EXTERNAL_STORAGE WRITE_EXTERNAL_STORAGE POST_NOTIFICATIONS; do
   if grep -q "android.permission.$p'" <<<"$PERMS"; then
