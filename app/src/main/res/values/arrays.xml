@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- resolution_labels 与 resolution_values 按索引一一对应 -->
+    <string-array name="resolution_labels">
+        <item>自适应（按手机屏幕）</item>
+        <item>1280 × 720</item>
+        <item>1600 × 900</item>
+        <item>1920 × 1080</item>
+        <item>2560 × 1440</item>
+        <item>1024 × 768</item>
+    </string-array>
+
+    <string-array name="resolution_values">
+        <item>adaptive</item>
+        <item>1280x720</item>
+        <item>1600x900</item>
+        <item>1920x1080</item>
+        <item>2560x1440</item>
+        <item>1024x768</item>
+    </string-array>
+</resources>

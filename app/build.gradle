@@ -1,0 +1,84 @@
+apply plugin: 'com.android.application'
+// AGP 9.0+ 已内置 Kotlin 支持，无需 apply org.jetbrains.kotlin.android
+apply plugin: 'com.google.devtools.ksp'
+
+android {
+    namespace 'com.anrdp'
+    compileSdk = rootProject.ext.compileApi
+    buildToolsVersion = rootProject.ext.toolsVersion
+
+    defaultConfig {
+        applicationId 'com.anrdp'
+        minSdk rootProject.ext.minApi
+        targetSdk rootProject.ext.targetApi
+        versionCode 1
+        versionName '1.0'
+        // freeRDPCore 的 AAR 内含原生库，只保留 arm64-v8a
+        ndk { abiFilters rootProject.ext.abiFilters }
+    }
+
+    buildTypes {
+        release {
+            // 内部自用：release 沿用 debug 签名，APK 可直接 adb install -r 覆盖升级
+            signingConfig signingConfigs.debug
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+        debug {
+            jniDebuggable true
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    buildFeatures {
+        viewBinding true
+    }
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+    }
+}
+
+dependencies {
+    // 引擎：预编译 AAR（方案 A），由上游 Studio 工程产出后放入 libs/
+    // 注意：本地 AAR 不解析传递依赖，freeRDPCore 自身的运行时依赖需在下方显式声明。
+    implementation files('libs/freeRDPCore-release.aar')
+
+    implementation 'androidx.appcompat:appcompat:1.7.1'
+    implementation 'androidx.core:core-ktx:1.18.0'
+    implementation 'com.google.android.material:material:1.14.0'
+    implementation 'androidx.recyclerview:recyclerview:1.4.0'
+    implementation 'androidx.lifecycle:lifecycle-runtime-ktx:2.11.0'
+
+    // 以下为 freeRDPCore 的运行时依赖（见其模块 build.gradle），AAR 不传递故需显式声明
+    implementation 'androidx.preference:preference:1.2.1'
+    implementation 'androidx.lifecycle:lifecycle-viewmodel:2.11.0'
+    implementation 'androidx.lifecycle:lifecycle-livedata:2.11.0'
+    implementation('net.zetetic:sqlcipher-android:4.17.0@aar')
+    implementation 'androidx.sqlite:sqlite:2.7.0'
+
+    implementation 'androidx.room:room-runtime:2.8.5'
+    implementation 'androidx.room:room-ktx:2.8.5'
+    ksp 'androidx.room:room-compiler:2.8.5'
+
+    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0'
+
+    // androidx.core 1.19+ 要求 AGP 9.1；为与引擎侧保持一致统一锁到 1.18.0
+    constraints {
+        implementation 'androidx.core:core:1.18.0'
+        implementation 'androidx.core:core-ktx:1.18.0'
+    }
+}
+
+configurations.all {
+    resolutionStrategy {
+        force 'androidx.core:core:1.18.0', 'androidx.core:core-ktx:1.18.0'
+    }
+}

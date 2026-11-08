@@ -1,0 +1,32 @@
+pluginManagement {
+    repositories {
+        // 只使用官方仓库：阿里云镜像提供的 Gradle Module Metadata 不完整，
+        // 会导致库资源变体（android-compiled-dependencies-resources）解析为空，aapt2 链接缺库资源。
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+        // 可选：本地 Maven 补充仓库（离线/内网环境用环境变量 LOCAL_MAVEN_REPO 指定）。
+        // 必须排在官方仓库之后：本地仓库可能含“只有 .pom 没有 .jar”的残缺条目，
+        // Gradle 不会跨仓库回退，排在最前会导致元数据命中本地而 jar 缺失。
+        def localRepo = System.getenv('LOCAL_MAVEN_REPO')
+        if (localRepo && new File(localRepo).exists()) {
+            maven { url = new File(localRepo).toURI() }
+        }
+    }
+}
+
+dependencyResolutionManagement {
+    repositories {
+        google()
+        mavenCentral()
+        def localRepo = System.getenv('LOCAL_MAVEN_REPO')
+        if (localRepo && new File(localRepo).exists()) {
+            maven { url = new File(localRepo).toURI() }
+        }
+    }
+}
+
+rootProject.name = 'anrdp'
+
+// 方案 A：freeRDPCore 以预编译 AAR 消费，工程只保留 :app 一个模块
+include ':app'

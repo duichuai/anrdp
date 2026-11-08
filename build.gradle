@@ -1,0 +1,22 @@
+// anrdp 根构建脚本
+// 引擎（freeRDPCore）以预编译 AAR 消费，其版本与构建配置由上游 Studio 工程自持，
+// 主工程不再重复声明 compileApi/toolsVersion/ndkVersion/cmakeArguments，避免与上游对不齐。
+plugins {
+    // freeRDPCore AAR 要求 compileSdk>=37；AGP 8.13.2 硬限制最大 compileSdk=36，
+    // 无法注册 android-37 target。升级到 AGP 9.2.1（与上游 Studio 工程一致）。
+    // 注：v1 源码库模块时代 AGP 9.x 有 aapt2 链接缺陷；v2 用预编译 AAR，资源预编译，不受影响。
+    id 'com.android.application' version '9.2.1' apply false
+    // AGP 9.0+ 已内置 Kotlin 支持，不再声明 org.jetbrains.kotlin.android
+    id 'com.google.devtools.ksp' version '2.3.12' apply false
+}
+
+ext {
+    compileApi = 37
+    targetApi = 37
+    minApi = 29
+    toolsVersion = '37.0.0'
+    // 构建机内存有限，只出 arm64-v8a
+    abiFilters = 'arm64-v8a'.split(';')
+}
+
+// 仓库统一在 settings.gradle 的 dependencyResolutionManagement 中声明（仅官方仓库 + 本地补充）

@@ -1,0 +1,18 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- 显示器 -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M28,34h52a4,4 0 0 1 4,4v28a4,4 0 0 1 -4,4H28a4,4 0 0 1 -4,-4V38a4,4 0 0 1 4,-4z" />
+    <!-- 屏幕内箭头（远程控制） -->
+    <path
+        android:fillColor="#1565C0"
+        android:pathData="M42,44l14,8l-6,2l-3,6z" />
+    <!-- 底座 -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M48,70h12v4h-12zM40,76h28v3h-28z" />
+</vector>

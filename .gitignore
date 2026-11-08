@@ -1,0 +1,22 @@
+# Gradle / 构建产物
+.gradle/
+build/
+.cxx/
+captures/
+
+# 机器相关配置（sdk.dir 等，不入库）
+local.properties
+
+# 本机环境细节备忘（含内网地址/挂载路径，不随仓库发布）
+LOCAL_ENV.md
+
+# 引擎源码与原生依赖（体积大，不入库；重编 AAR 时由 scripts/build-freerdpcore-aar.sh 自动下载）
+deps/
+
+# IDE
+.idea/
+*.iml
+.DS_Store
+
+# APK 构建产物
+*.apk

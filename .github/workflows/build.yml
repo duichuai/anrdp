@@ -1,0 +1,86 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: 构建并校验 debug APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: 检出源码
+        uses: actions/checkout@v4
+
+      - name: 准备 JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+
+      - name: 安装 Android SDK 组件
+        run: |
+          set -euo pipefail
+          SDKMAN="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$SDKMAN" ]; then
+            SDKMAN="$(command -v sdkmanager)"
+          fi
+          yes | "$SDKMAN" --licenses > /dev/null 2>&1 || true
+          # API 37 平台在 SDK 仓库中按 android-37.0 提供，个别版本为 android-37，两者都试
+          "$SDKMAN" "platform-tools" "build-tools;37.0.0" "platforms;android-37.0" \
+            || "$SDKMAN" "platform-tools" "build-tools;37.0.0" "platforms;android-37"
+
+          # AGP 按 compileSdk=37 查找 platforms/android-37 并按 ApiLevel 元数据校验，
+          # 与本地工具链保持一致：缺目录时从 android-37.0 复制并改写 ApiLevel。
+          if [ -d "$ANDROID_HOME/platforms/android-37.0" ] && [ ! -d "$ANDROID_HOME/platforms/android-37" ]; then
+            cp -r "$ANDROID_HOME/platforms/android-37.0" "$ANDROID_HOME/platforms/android-37"
+            sed -i 's/^AndroidVersion\.ApiLevel=.*/AndroidVersion.ApiLevel=37/' \
+              "$ANDROID_HOME/platforms/android-37/source.properties"
+          fi
+          ls "$ANDROID_HOME/platforms" "$ANDROID_HOME/build-tools"
+
+      - name: 构建 debug APK
+        run: |
+          set -euo pipefail
+          # 个别脚本可能因跨平台提交带 CRLF，先归一化
+          sed -i 's/\r$//' gradlew
+          chmod +x gradlew
+          ./gradlew :app:assembleDebug --console=plain \
+            -Dorg.gradle.jvmargs="-Xmx3072m -XX:MaxMetaspaceSize=768m -Dfile.encoding=UTF-8" \
+            -Dorg.gradle.workers.max=4
+
+      - name: 校验 APK
+        run: |
+          set -euo pipefail
+          APK="app/build/outputs/apk/debug/app-debug.apk"
+          [ -f "$APK" ] || { echo "未产出 $APK"; exit 1; }
+
+          AAPT2="$ANDROID_HOME/build-tools/37.0.0/aapt2"
+          PERMS="$("$AAPT2" dump permissions "$APK")"
+          # 引擎 AAR 会引入一批未使用权限，manifest 中已用 tools:node="remove" 清除，此处回归校验
+          for p in CAMERA RECORD_AUDIO READ_EXTERNAL_STORAGE WRITE_EXTERNAL_STORAGE POST_NOTIFICATIONS; do
+            if grep -q "android.permission.$p'" <<<"$PERMS"; then
+              echo "APK 仍包含未使用权限：$p"; exit 1
+            fi
+          done
+          for p in INTERNET ACCESS_NETWORK_STATE; do
+            grep -q "android.permission.$p'" <<<"$PERMS" || { echo "APK 缺少必需权限：$p"; exit 1; }
+          done
+          unzip -l "$APK" | grep -q 'lib/arm64-v8a/libfreerdp-android\.so' || { echo "APK 缺少引擎原生库"; exit 1; }
+          echo "校验通过"
+
+      - name: 上传构建产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: anrdp-debug-apk
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
