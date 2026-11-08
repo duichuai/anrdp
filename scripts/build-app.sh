@@ -29,7 +29,7 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-WORKDIR="${WORKDIR:-/tmp/anrdp2-app-build}"
+WORKDIR="${WORKDIR:-/tmp/peerrdp-app-build}"
 
 log() { printf '\n\033[1m==> %s\033[0m\n' "$*"; }
 die() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }

@@ -1,4 +1,4 @@
-package com.anrdp.data
+package com.peerrdp.data
 
 import android.content.Context
 import androidx.room.Database
@@ -61,7 +61,7 @@ abstract class AppDatabase : RoomDatabase() {
                 instance ?: Room.databaseBuilder(
                     context.applicationContext,
                     AppDatabase::class.java,
-                    "anrdp.db"
+                    "peerrdp.db"
                 ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4).build().also { instance = it }
             }
     }

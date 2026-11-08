@@ -1,8 +1,8 @@
-# AnRDP 集成 n2n 客户端 — 设计文档
+# PeerRDP 集成 n2n 客户端 — 设计文档
 
 > 版本：v1 设计稿
 > 状态：**未采用**（保留作方案对比与历史记录）
-> 关系：在 `anrdp` 现有 RDP 客户端基础上，集成 n2n P2P VPN 能力，使手机可跨网络加入虚拟局域网后再发起 RDP 连接。
+> 关系：在 `peerrdp` 现有 RDP 客户端基础上，集成 n2n P2P VPN 能力，使手机可跨网络加入虚拟局域网后再发起 RDP 连接。
 >
 > **说明**：项目已改用 Tailscale（tsnet）方案，并于 2026-11-08 完成实现，见 `docs/tailscale-integration-design.md`。本文不再实施。
 
@@ -12,7 +12,7 @@
 
 ### 1.1 产品目标
 
-为 AnRDP 增加 **n2n 边缘节点（edge）** 能力：用户无需公网 IP，通过 n2n 的 supernode 协调 + P2P 打洞，将 Android 设备与目标 Windows 主机拉入同一虚拟局域网（community），再用 RDP 连接虚拟网段内的主机地址。
+为 PeerRDP 增加 **n2n 边缘节点（edge）** 能力：用户无需公网 IP，通过 n2n 的 supernode 协调 + P2P 打洞，将 Android 设备与目标 Windows 主机拉入同一虚拟局域网（community），再用 RDP 连接虚拟网段内的主机地址。
 
 | 编号 | 需求 | 说明 |
 | --- | --- | --- |
@@ -110,7 +110,7 @@ Android 的 `VpnService` 只能创建 **TUN** 接口（网络层，只收发 IP 
 | --- | --- | --- |
 | 协议版本 | n2n v3 官方 | 当前主线，兼容最新 supernode 与社区生态 |
 | tun2tap | 移植 hin2n 的 uip 方案 | 经过真机验证的成熟方案，避免重新发明 ARP/以太网帧模拟 |
-| 构建 | CMake + NDK（与 freeRDPCore 一致） | anrdp 已有 NDK/CMake 工具链，复用即可 |
+| 构建 | CMake + NDK（与 freeRDPCore 一致） | peerrdp 已有 NDK/CMake 工具链，复用即可 |
 | 嵌入式 API | n2n v3 官方 `edge_init` 系列 | 比 v2s 的 `edge_jni` 更清晰，便于维护 |
 
 不选 hin2n 直接移植的原因：v2s 协议与 ntop v3 不互通，若用户的 Windows 主机跑官方 n2n v3 edge，则无法联通。
@@ -228,7 +228,7 @@ class N2nVpnService : VpnService() {
             .setMtu(config.mtu)
             .addAddress(config.ipAddress, prefixLength(config.netmask))
             .addRoute(networkAddress(config.ipAddress, config.netmask), prefixLength(config.netmask))
-            .setSession("AnRDP n2n · ${config.community}")
+            .setSession("PeerRDP n2n · ${config.community}")
         tunFd = builder.establish() ?: run { stopSelf(); return START_NOT_STICKY }
 
         // 2. 启动 n2n edge（native 层，独立线程）
@@ -328,7 +328,7 @@ Java 侧 `N2nVpnService` 声明的 native 方法对应 JNI 实现：
 
 | Java 方法 | JNI 函数 | 作用 |
 | --- | --- | --- |
-| `nativeStartEdge(N2nEdgeConfig)` | `Java_com_anrdp_n2n_N2nVpnService_nativeStartEdge` | 配置 n2n edge 并启动主循环（新线程） |
+| `nativeStartEdge(N2nEdgeConfig)` | `Java_com_peerrdp_n2n_N2nVpnService_nativeStartEdge` | 配置 n2n edge 并启动主循环（新线程） |
 | `nativeStopEdge()` | `..._nativeStopEdge` | 设置 `keep_running=false`，等待 edge 线程退出 |
 | `nativeGetEdgeStatus()` | `..._nativeGetEdgeStatus` | 返回当前 edge 状态 |
 
@@ -492,12 +492,12 @@ curl -L https://github.com/ntop/n2n/archive/refs/tags/${N2N_VERSION}.tar.gz \
 tar -xzf /tmp/n2n-${N2N_VERSION}.tar.gz -C app/src/main/cpp/n2n/upstream --strip-components=1
 ```
 
-> 网络限制：`github.com` 直连超时，需走 socks5 代理 `192.168.56.1:1080`（与 anrdp 其他依赖处理一致）。
+> 网络限制：`github.com` 直连超时，需走 socks5 代理 `192.168.56.1:1080`（与 peerrdp 其他依赖处理一致）。
 
 ### 6.4 与 freeRDPCore 构建的共存
 
 - freeRDPCore 是预编译 AAR，其原生库已打包在 AAR 内
-- n2n 原生库由 anrdp 应用工程的 CMake 直接构建，产物 `libn2n_android.so` 进入 APK
+- n2n 原生库由 peerrdp 应用工程的 CMake 直接构建，产物 `libn2n_android.so` 进入 APK
 - 两者互不干扰，APK 内同时包含 `lib/arm64-v8a/libfreerdp-android.so` 与 `lib/arm64-v8a/libn2n_android.so`
 - 若 OpenSSL 符号冲突，n2n 侧使用自带 AES 实现（`N2N_OPTION_AES=ON` 但不链接 OpenSSL，用 n2n 内置 aes.c）
 
@@ -553,9 +553,9 @@ tar -xzf /tmp/n2n-${N2N_VERSION}.tar.gz -C app/src/main/cpp/n2n/upstream --strip
 
 ## 9. 许可合规
 
-- **n2n**：GPLv3。anrdp 作为整体若静态链接 n2n 源码，需遵守 GPLv3（传染）。
+- **n2n**：GPLv3。peerrdp 作为整体若静态链接 n2n 源码，需遵守 GPLv3（传染）。
   - 对策：n2n 原生库以独立 `.so` 动态链接（`libn2n_android.so`），GPLv3 要求对该 `.so` 的源码提供获取渠道（在 `SOURCE.md` 中注明 n2n 源码地址与版本即可）。
-  - anrdp 应用层代码（Kotlin）仍为原有许可，不被传染（动态链接 + 进程内通信，GPLv3 的传染边界在司法实践中有争议，但提供 n2n 源码获取渠道是最低合规要求）。
+  - peerrdp 应用层代码（Kotlin）仍为原有许可，不被传染（动态链接 + 进程内通信，GPLv3 的传染边界在司法实践中有争议，但提供 n2n 源码获取渠道是最低合规要求）。
 - **uip**：BSD 协议，无传染风险。
 - **hin2n 代码**：GPLv3，移植 tun2tap/uip 部分时保留版权声明。
 

@@ -1,8 +1,8 @@
-# AnRDP 集成 Tailscale 设计文档
+# PeerRDP 集成 Tailscale 设计文档
 
 > 版本：v1.1（设计 + 实现记录）
 > 状态：**已实现**（2026-11-08，代码与 wrapper 已提交：`02a0d91` / `f7ebaed`）
-> 关系：替代 `n2n-integration-design.md` 方案。利用 Tailscale（WireGuard）的成熟生态与 tsnet 嵌入库，在 anrdp 应用内实现 P2P 组网，使 RDP 可跨网络连接虚拟网段内的主机。
+> 关系：替代 `n2n-integration-design.md` 方案。利用 Tailscale（WireGuard）的成熟生态与 tsnet 嵌入库，在 peerrdp 应用内实现 P2P 组网，使 RDP 可跨网络连接虚拟网段内的主机。
 
 ## 实现状态（2026-11-08）
 
@@ -29,7 +29,7 @@
 
 ### 1.1 产品目标
 
-为 AnRDP 增加 **Tailscale 节点**能力：将 Android 设备作为 Tailscale 网络（tailnet）中的一个节点，与目标 Windows 主机（也安装 Tailscale 客户端）建立加密 P2P 通道，再用 RDP 连接目标主机的 Tailscale 虚拟 IP。
+为 PeerRDP 增加 **Tailscale 节点**能力：将 Android 设备作为 Tailscale 网络（tailnet）中的一个节点，与目标 Windows 主机（也安装 Tailscale 客户端）建立加密 P2P 通道，再用 RDP 连接目标主机的 Tailscale 虚拟 IP。
 
 | 编号 | 需求 | 说明 |
 | --- | --- | --- |
@@ -72,7 +72,7 @@ Tailscale 在 Android 上有两种集成模式：
 | 维度 | 模式 A：用户态 SOCKS5（推荐） | 模式 B：VpnService 系统隧道 |
 | --- | --- | --- |
 | VpnService 权限 | **不需要** | 需要 |
-| 流量范围 | 仅 anrdp 应用内 | 整个手机系统 |
+| 流量范围 | 仅 peerrdp 应用内 | 整个手机系统 |
 | 与其他 VPN 共存 | **可以** | 互斥 |
 | RDP 连接方式 | FreeRDP 通过 `/proxy:socks5://` 走代理 | FreeRDP 直连虚拟 IP |
 | 系统 VPN 图标 | 无 | 有（状态栏钥匙图标） |
@@ -121,7 +121,7 @@ Tailscale 在 Android 上有两种集成模式：
 
 1. **tsnet 完全在应用进程内运行**，不依赖系统 VPN 服务，不申请 VpnService 权限。
 2. **RDP 流量经 SOCKS5 代理进入 tsnet**，由 tsnet 的 WireGuard 加密后发往对端节点。
-3. **控制面完全自托管**：Headscale 部署在用户自己的公网服务器上，anrdp 不依赖任何第三方 SaaS。
+3. **控制面完全自托管**：Headscale 部署在用户自己的公网服务器上，peerrdp 不依赖任何第三方 SaaS。
 
 ---
 
@@ -133,7 +133,7 @@ Tailscale 在 Android 上有两种集成模式：
 
 ### 4.2 Go wrapper 包设计
 
-新建独立模块 `tsnet-android/`（Go module，不入库到 anrdp，单独构建产出 AAR）：
+新建独立模块 `tsnet-android/`（Go module，不入库到 peerrdp，单独构建产出 AAR）：
 
 ```go
 // tsnet-android/server.go
@@ -248,7 +248,7 @@ func (s *Server) TailnetIP() string {
 go install golang.org/x/mobile/cmd/gomobile@latest
 gomobile init
 
-# 2. 构建 AAR（arm64-v8a，与 anrdp 一致；实际使用 androidapi 21）
+# 2. 构建 AAR（arm64-v8a，与 peerrdp 一致；实际使用 androidapi 21）
 cd tsnet-android
 ANDROID_HOME=/path/to/android-sdk \
 gomobile bind -target=android/arm64 \
@@ -261,7 +261,7 @@ gomobile bind -target=android/arm64 \
          ts_omit_clientmetrics ts_omit_usermetrics ts_omit_netlog ts_omit_runtimemetrics \
          ts_omit_logtail ts_omit_health ts_omit_peerapiserver ts_omit_peerapiclient \
          ts_omit_identityfederation ts_omit_remoteconfig ts_omit_dns ts_omit_oauthkey" \
-  -o ../anrdp/app/libs/tsnet.aar \
+  -o ../peerrdp/app/libs/tsnet.aar \
   .
 ```
 
@@ -277,7 +277,7 @@ gomobile bind -target=android/arm64 \
 >
 > **未采用 UPX**：UPX `--android-shlib` 可将 `libgojni.so` 19MB → 15MB，但 Android 10+（API 29+）的 W^X 内存保护可能导致运行时加载失败，兼容性风险大于体积收益，故不启用。
 
-产物：`tsnet.aar` + `tsnet-sources.jar`，放入 `anrdp/app/libs/`，与 `freeRDPCore-release.aar` 同级。
+产物：`tsnet.aar` + `tsnet-sources.jar`，放入 `peerrdp/app/libs/`，与 `freeRDPCore-release.aar` 同级。
 
 > **网络限制**：Go 模块下载需走 socks5 代理 `192.168.56.1:1080`（设置 `GOPROXY` 或 `HTTPS_PROXY`）。
 
@@ -337,7 +337,7 @@ gomobile bind -target=android/arm64 \
 
 ### 5.4 Tailscale 管理器 `TailscaleManager`
 
-应用层唯一入口，封装对 tsnet AAR 的调用。实际 API（`com.anrdp.tailscale.TailscaleManager`，`object` 单例）：
+应用层唯一入口，封装对 tsnet AAR 的调用。实际 API（`com.peerrdp.tailscale.TailscaleManager`，`object` 单例）：
 
 ```kotlin
 object TailscaleManager {
@@ -420,16 +420,16 @@ Headscale 管理员生成 pre-auth key：
 
 ```bash
 headscale preauthkeys create \
-  --user anrdp-user \
+  --user peerrdp-user \
   --reusable \
   --expiration 720h
 ```
 
-生成的 key 填入 anrdp 的 Tailscale 配置中。tsnet 启动时用此 key 自动注册节点，无需交互式登录。
+生成的 key 填入 peerrdp 的 Tailscale 配置中。tsnet 启动时用此 key 自动注册节点，无需交互式登录。
 
 ### 6.3 目标主机接入
 
-Windows 目标主机安装 Tailscale 客户端，登录同一 Headscale 服务器（用同一 pre-auth key 或交互式登录），获得虚拟 IP（如 `100.64.1.5`）。anrdp 的 RDP 连接 `host` 字段填此虚拟 IP。
+Windows 目标主机安装 Tailscale 客户端，登录同一 Headscale 服务器（用同一 pre-auth key 或交互式登录），获得虚拟 IP（如 `100.64.1.5`）。peerrdp 的 RDP 连接 `host` 字段填此虚拟 IP。
 
 ---
 
@@ -463,7 +463,7 @@ tsnet 启动后是长连接。当前实现直接运行在应用进程内，**没
     android:foregroundServiceType="specialUse" />
 ```
 
-> 注：当前 anrdp Manifest 中 `POST_NOTIFICATIONS` 被 `tools:node="remove"` 移除；启用前台服务时需加回，并同步更新 README 权限表。
+> 注：当前 peerrdp Manifest 中 `POST_NOTIFICATIONS` 被 `tools:node="remove"` 移除；启用前台服务时需加回，并同步更新 README 权限表。
 
 ---
 
@@ -527,7 +527,7 @@ scripts/build-tsnet-aar.sh
 - **WireGuard**：GPL-2.0（内核模块）/ MIT（go 实现 wireguard-go）。tsnet 用的是 **wireguard-go**（MIT），无传染。
 - **gomobile 生成物**：BSD 风格许可证。
 
-整体许可证对 anrdp 友好，无 GPL 传染风险。**2026-11-08 已在 `THIRD_PARTY_NOTICES.md` 补充 Tailscale/tsnet（BSD-3-Clause）、wireguard-go（MIT）、gVisor（Apache-2.0）、Go 运行时与 gomobile（BSD-3-Clause）的声明**；`SOURCE.md` 同时补充了组件源码地址。
+整体许可证对 peerrdp 友好，无 GPL 传染风险。**2026-11-08 已在 `THIRD_PARTY_NOTICES.md` 补充 Tailscale/tsnet（BSD-3-Clause）、wireguard-go（MIT）、gVisor（Apache-2.0）、Go 运行时与 gomobile（BSD-3-Clause）的声明**；`SOURCE.md` 同时补充了组件源码地址。
 
 ---
 

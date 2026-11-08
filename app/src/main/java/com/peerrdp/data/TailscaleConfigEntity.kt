@@ -1,4 +1,4 @@
-package com.anrdp.data
+package com.peerrdp.data
 
 import androidx.room.Entity
 import androidx.room.PrimaryKey
@@ -16,7 +16,7 @@ data class TailscaleConfigEntity(
     /** pre-auth key，用于非交互式注册节点 */
     val authKey: String,
     /** 节点在 tailnet 中的主机名 */
-    val hostname: String = "anrdp",
+    val hostname: String = "peerrdp",
     /** 状态文件保存目录（应用内部存储），通常由应用自动填充 */
     val stateDir: String = "",
     val createdAt: Long = System.currentTimeMillis()

@@ -45,7 +45,7 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-WORKDIR="${WORKDIR:-/tmp/anrdp2-build}"
+WORKDIR="${WORKDIR:-/tmp/peerrdp-build}"
 
 # 引擎与原生依赖版本：升级时改默认值或在命令行用同名环境变量覆盖
 FREERDP_VERSION="${FREERDP_VERSION:-3.33.0}"

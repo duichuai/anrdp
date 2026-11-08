@@ -81,6 +81,6 @@ jobs:
       - name: 上传构建产物
         uses: actions/upload-artifact@v4
         with:
-          name: anrdp-debug-apk
+          name: peerrdp-debug-apk
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error

@@ -1,4 +1,4 @@
-module github.com/anrdp/tsnet-android
+module github.com/duichuai/peerrdp/tsnet-android
 
 go 1.27.1
 

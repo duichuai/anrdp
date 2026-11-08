@@ -1,4 +1,4 @@
-package com.anrdp
+package com.peerrdp
 
 import android.content.Intent
 import android.os.Bundle
@@ -16,12 +16,12 @@ import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
-import com.anrdp.data.AppDatabase
-import com.anrdp.data.ConnectionEntity
-import com.anrdp.databinding.ActivityMainBinding
-import com.anrdp.databinding.ItemConnectionBinding
-import com.anrdp.edit.ConnectionEditActivity
-import com.anrdp.tailscale.TailscaleConfigEditActivity
+import com.peerrdp.data.AppDatabase
+import com.peerrdp.data.ConnectionEntity
+import com.peerrdp.databinding.ActivityMainBinding
+import com.peerrdp.databinding.ItemConnectionBinding
+import com.peerrdp.edit.ConnectionEditActivity
+import com.peerrdp.tailscale.TailscaleConfigEditActivity
 import kotlinx.coroutines.launch
 
 class MainActivity : AppCompatActivity() {

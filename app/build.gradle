@@ -3,11 +3,11 @@ apply plugin: 'com.android.application'
 apply plugin: 'com.google.devtools.ksp'
 
 // 专用 release 签名：优先仓库根目录 keystore.properties（CI 由 Secrets 生成），
-// 本地没有时回退到同级私有仓库 ../anrdp-secrets/keystore.properties（不入 GitHub，历史另有备份）。
+// 本地没有时回退到同级私有仓库 ../peerrdp-secrets/keystore.properties（不入 GitHub，历史另有备份）。
 // 两者都缺失时回退 debug 签名，保证无密钥环境下仍可构建。
 def keystorePropsFile = rootProject.file('keystore.properties')
 if (!keystorePropsFile.exists()) {
-    def secretsProps = rootProject.file('../anrdp-secrets/keystore.properties')
+    def secretsProps = rootProject.file('../peerrdp-secrets/keystore.properties')
     if (secretsProps.exists()) keystorePropsFile = secretsProps
 }
 def keystoreProps = new Properties()
@@ -26,12 +26,12 @@ def codeFromName = { String v ->
 def appVersionCode = (project.findProperty('appVersionCode') ?: Math.max(codeFromName(appVersionName), 1)) as Integer
 
 android {
-    namespace 'com.anrdp'
+    namespace 'com.peerrdp'
     compileSdk = rootProject.ext.compileApi
     buildToolsVersion = rootProject.ext.toolsVersion
 
     defaultConfig {
-        applicationId 'com.anrdp'
+        applicationId 'com.peerrdp'
         minSdk rootProject.ext.minApi
         targetSdk rootProject.ext.targetApi
         versionCode appVersionCode

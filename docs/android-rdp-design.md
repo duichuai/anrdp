@@ -1,8 +1,8 @@
-# AnRDP 设计文档 — Android RDP 远程桌面客户端
+# PeerRDP 设计文档 — Android RDP 远程桌面客户端
 
 > 版本：v2 设计稿（设计 + 实现记录）
 > 状态：**已实现**（基础版本提交 `01a51aa`；2026-11-08 增加 Tailscale 集成，提交 `02a0d91` / `f7ebaed`）
-> 关系：复用 `../anrdp`（v1）已验证的成果与踩坑结论，在 `anrdp2` 重新组织工程与方案
+> 关系：复用 `../peerrdp`（v1）已验证的成果与踩坑结论，在 `peerrdp` 重新组织工程与方案
 >
 > 实现差异、当前模块/数据层细节以 `docs/technical-design.md` 为准；Tailscale 方案见 `docs/tailscale-integration-design.md`。
 
@@ -59,7 +59,7 @@ v2 推荐改为**两段式构建**：
 ```
 ① 用上游自带 Studio 工程（deps/.../Studio/，其自有 settings.gradle / 根 build.gradle / rootProject.ext）
    → ./gradlew :freeRDPCore:assembleRelease  → 产出 freeRDPCore-release.aar（含 .so 与原资源）
-② anrdp2 应用工程以 AAR 形式消费 → 只保留 :app 一个模块
+② peerrdp 应用工程以 AAR 形式消费 → 只保留 :app 一个模块
 ```
 
 优点：
@@ -126,7 +126,7 @@ v2 推荐改为**两段式构建**：
 
 **DAO** `ConnectionDao`：`observeAll(): Flow<List<...>>`（`ORDER BY lastUsedAt DESC, createdAt DESC`）、`getById`、`insert`、`update`、`delete`、`touch(id, ts)`。
 
-**数据库** `AppDatabase`：单例、库名 `anrdp.db`、`exportSchema=false`、`version=1`。
+**数据库** `AppDatabase`：单例、库名 `peerrdp.db`、`exportSchema=false`、`version=1`。
 
 > 安全说明：本期密码以明文存于 Room。若后续需要，可接入 `androidx.security.crypto` 加密或改为"仅连接时输入、不落库"。
 
@@ -192,7 +192,7 @@ freerdp://user@ip:port/connect?p=password&d=domain
 
 ### 4.6 应用入口
 
-`AnRdpApp : GlobalApp`（`GlobalApp` 位于 `freeRDPCore.application`），复用引擎的全局初始化（事件监听注册、会话表）。
+`PeerRdpApp : GlobalApp`（`GlobalApp` 位于 `freeRDPCore.application`），复用引擎的全局初始化（事件监听注册、会话表）。
 
 ---
 
@@ -214,13 +214,13 @@ freerdp://user@ip:port/connect?p=password&d=domain
 ## 6. 工程结构
 
 ```
-anrdp/
+peerrdp/
 ├── app/                                     # 唯一应用模块
 │   ├── build.gradle
 │   └── src/main/
 │       ├── AndroidManifest.xml
-│       ├── java/com/anrdp/
-│       │   ├── AnRdpApp.kt                   # : GlobalApp()
+│       ├── java/com/peerrdp/
+│       │   ├── PeerRdpApp.kt                   # : GlobalApp()
 │       │   ├── MainActivity.kt               # 连接列表
 │       │   ├── RdpConnector.kt               # Entity → freerdp:// URI
 │       │   ├── data/ConnectionEntity.kt|ConnectionDao.kt|AppDatabase.kt
@@ -245,7 +245,7 @@ anrdp/
 
 ## 7. 构建方案
 
-### 7.1 工具链（沿用 v1 已装好的，位于 `/tmp/anrdp-tools`）
+### 7.1 工具链（沿用 v1 已装好的，位于 `/tmp/peerrdp-tools`）
 
 | 项 | 版本 |
 | --- | --- |
@@ -266,7 +266,7 @@ anrdp/
 
 - `compileSdk=37`，`minSdk=29`，`targetSdk=37`，`buildToolsVersion=37.0.0`
 - `ndk.abiFilters = ['arm64-v8a']`（构建机内存有限，只出 arm64）
-- AndroidManifest：`INTERNET`、`ACCESS_NETWORK_STATE` 权限；`application` 使用 `AnRdpApp`
+- AndroidManifest：`INTERNET`、`ACCESS_NETWORK_STATE` 权限；`application` 使用 `PeerRdpApp`
 - 密码框 `windowSoftInputMode=adjustResize`
 
 ### 7.3 原生依赖（CMake）
@@ -303,7 +303,7 @@ ANDROID_HOME=/path/to/android-sdk ./gradlew :freeRDPCore:assembleRelease
 # 产物 → freeRDPCore/build/outputs/aar/freeRDPCore-release.aar → 复制到 app/libs/
 
 # ② 编应用
-cd anrdp   # 若仓库位于共享挂载盘（不支持符号链接），先 rsync 到本地磁盘再编
+cd peerrdp   # 若仓库位于共享挂载盘（不支持符号链接），先 rsync 到本地磁盘再编
 ANDROID_HOME=/path/to/android-sdk ./gradlew assembleDebug
 # 产物 → app/build/outputs/apk/debug/app-debug.apk
 ```
@@ -336,7 +336,7 @@ ANDROID_HOME=/path/to/android-sdk ./gradlew assembleDebug
 
 ## 9. v1 → v2 差异对照
 
-| 维度 | v1（`../anrdp`） | v2（`anrdp2`） |
+| 维度 | v1（`../peerrdp`） | v2（`peerrdp`） |
 | --- | --- | --- |
 | 引擎集成 | `freeRDPCore` 作为源码库模块 include | **预编译 AAR 消费**（推荐） |
 | 工程模块 | `:app` + `:freeRDPCore` | 仅 `:app` |
@@ -351,7 +351,7 @@ ANDROID_HOME=/path/to/android-sdk ./gradlew assembleDebug
 
 | 文件 | 作用 | 复用度 |
 | --- | --- | --- |
-| `AnRdpApp.kt` | 继承 `GlobalApp` | 直接用 |
+| `PeerRdpApp.kt` | 继承 `GlobalApp` | 直接用 |
 | `data/ConnectionEntity.kt` | Room 实体 | 直接用 |
 | `data/ConnectionDao.kt` | DAO | 直接用 |
 | `data/AppDatabase.kt` | 数据库单例 | 直接用 |
@@ -368,10 +368,10 @@ ANDROID_HOME=/path/to/android-sdk ./gradlew assembleDebug
 
 ## 11. 里程碑（建议，不含时间估算）
 
-1. **工程骨架**：`anrdp2` 建立 `:app`、迁移应用层 Kotlin/资源、配置 `gradle.properties`/wrapper
+1. **工程骨架**：`peerrdp` 建立 `:app`、迁移应用层 Kotlin/资源、配置 `gradle.properties`/wrapper
 2. **引擎前置**：用上游 Studio 工程产出 `freeRDPCore-release.aar`（含 `lib/arm64-v8a/*.so`），放入 `libs/`
 3. **应用构建**：`:app` 消费 AAR，`assembleDebug` 通过
-4. **产出与验证**：`app-debug.apk` 复制到 `anrdp2/`；检查 APK 内含 `.so` + dex
+4. **产出与验证**：`app-debug.apk` 复制到 `peerrdp/`；检查 APK 内含 `.so` + dex
 5. **（用户侧）真机实测**：连接真实 RDP 服务器，验证列表/编辑/键盘/触摸
 
 ---

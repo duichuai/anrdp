@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">AnRDP 远程桌面</string>
+    <string name="app_name">PeerRDP 远程桌面</string>
     <!-- 桌面图标标签：受启动器图标宽度限制，需短于 app_name -->
-    <string name="app_name_short">AnRDP</string>
+    <string name="app_name_short">PeerRDP</string>
     <string name="empty_connections">暂无连接\n点击右下角 + 新建 RDP 连接</string>
     <string name="add_connection">新建连接</string>
 

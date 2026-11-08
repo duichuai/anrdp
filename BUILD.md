@@ -1,25 +1,25 @@
-# AnRDP 构建与开发说明
+# PeerRDP 构建与开发说明
 
 > 本文件保存项目构建进度、环境布局与"勿回退"约束，供维护者参考。
 > 详细设计见 `docs/android-rdp-design.md`（§7 构建、§11 里程碑）；当前实现与技术债见 `docs/technical-design.md`；Tailscale 方案见 `docs/tailscale-integration-design.md`。
-> 文中路径以**工作区根**（仓库的上一级）为基准，即 `anrdp/...`、`tools/...`；`tsnet-android/` 已在 `anrdp/` 仓库内。
+> 文中路径以**工作区根**（仓库的上一级）为基准，即 `peerrdp/...`、`tools/...`；`tsnet-android/` 已在 `peerrdp/` 仓库内。
 > 最近更新：2026-11-08
 
 ## 1. 项目概况
 
-- 目标：Android RDP 客户端（AnRDP），FreeRDP 3.33.0 引擎 + Kotlin/Room 应用层
+- 目标：Android RDP 客户端（PeerRDP），FreeRDP 3.33.0 引擎 + Kotlin/Room 应用层
 - 组网：可选 Tailscale（tsnet）用户态节点，RDP 经本地 SOCKS5 走 tailnet
-- 仓库：`anrdp/`（git 根），引擎与 tsnet 均以**预编译 AAR** 消费，工程仅 `:app` 一个模块
-- 设计文档：`anrdp/docs/android-rdp-design.md`、`anrdp/docs/technical-design.md`、`anrdp/docs/tailscale-integration-design.md`
+- 仓库：`peerrdp/`（git 根），引擎与 tsnet 均以**预编译 AAR** 消费，工程仅 `:app` 一个模块
+- 设计文档：`peerrdp/docs/android-rdp-design.md`、`peerrdp/docs/technical-design.md`、`peerrdp/docs/tailscale-integration-design.md`
 
 ## 2. 进度（对照设计文档 §11 里程碑）
 
 | 里程碑 | 状态 |
 | --- | --- |
 | 1. 工程骨架 | ✅ 已提交 |
-| 2. freeRDPCore AAR | ✅ 已提交（`anrdp/app/libs/freeRDPCore-release.aar`，4.9MB） |
+| 2. freeRDPCore AAR | ✅ 已提交（`peerrdp/app/libs/freeRDPCore-release.aar`，4.9MB） |
 | 3. 应用构建 assembleDebug | ✅ 2026-11-07 构建成功 |
-| 4. APK 校验与产出 | ✅ 产物 `anrdp/app-debug.apk`（29MB），含 dex 与全部 arm64-v8a 原生库 |
+| 4. APK 校验与产出 | ✅ 产物 `peerrdp/app-debug.apk`（29MB），含 dex 与全部 arm64-v8a 原生库 |
 | 5. 真机实测 | 🟡 进行中：手机直连 VirtualBox VRDE（Linux Mint），画面/鼠标/英文键盘输入正常；中文输入靠远端输入法上屏 |
 | 6. Tailscale（tsnet）集成 | 🟡 已实现（2026-11-08，提交 `02a0d91` / `f7ebaed`）：tsnet AAR + 配置页 + 连接绑定 + SOCKS5 联动；待真机验证 tailnet 连接 |
 
@@ -71,11 +71,11 @@
 | Android SDK（cmdline-tools 19.0 / platform 37.0 / build-tools 37.0.0） | `tools/android-sdk/`（工作区内） |
 | `platforms/android-37` 目录 | `tools/android-sdk/platforms/android-37`（由 `android-37.0` 复制并把元数据 ApiLevel 改为 37；AGP 按目录名 `android-37` 查找 target） |
 | Gradle 依赖缓存 | `~/.gradle`（放本地磁盘；共享挂载盘的文件锁会影响 Gradle/SQLite 缓存） |
-| 引擎源码 + 原生依赖镜像 | `anrdp/deps/`（不入 git；仅重编 AAR 时需要，脚本可自动下载） |
-| tsnet Go wrapper 源码 | `anrdp/tsnet-android/`（已入库；仅重编 `app/libs/tsnet.aar` 时需要） |
-| 预编译 AAR | `anrdp/app/libs/freeRDPCore-release.aar`、`anrdp/app/libs/tsnet.aar`、`tsnet-sources.jar` |
+| 引擎源码 + 原生依赖镜像 | `peerrdp/deps/`（不入 git；仅重编 AAR 时需要，脚本可自动下载） |
+| tsnet Go wrapper 源码 | `peerrdp/tsnet-android/`（已入库；仅重编 `app/libs/tsnet.aar` 时需要） |
+| 预编译 AAR | `peerrdp/app/libs/freeRDPCore-release.aar`、`peerrdp/app/libs/tsnet.aar`、`tsnet-sources.jar` |
 | 可选本地 Maven 补充仓库 | 环境变量 `LOCAL_MAVEN_REPO` 指定的目录（缺省不使用） |
-| 构建工作区 | `/tmp/anrdp2-app-build`、`/tmp/anrdp2-build`（tmpfs，重启即失，rsync 可重建，属正常） |
+| 构建工作区 | `/tmp/peerrdp-app-build`、`/tmp/peerrdp-build`（tmpfs，重启即失，rsync 可重建，属正常） |
 
 ## 4. 构建命令
 
@@ -117,8 +117,8 @@ scripts/build-tsnet-aar.sh
 - 构建机内存建议 8GB 以上（NDK 编译 + R8 压缩），内存紧张时仅出 arm64-v8a 并限制并发
 - 行尾统一由 `.gitattributes` 约定（`gradlew`/`*.sh` 为 LF，`*.bat` 为 CRLF）；若在共享挂载盘上出现整树差异，先用 `git diff --ignore-cr-at-eol` 确认是否为挂载噪声
 - 外部下载源：`dl.google.com` 与 Maven 官方源需可访问；GitHub 不通时可走代理或使用 `deps/mirror/` 下的本地包
-- 实测环境：VirtualBox 中的 Linux 虚拟机，手机 AnRDP 直连其 VRDE 端口
-  - VRDE **默认单连接**：PC 客户端占着时 AnRDP 再连会被拒（不是 app 的 bug）
+- 实测环境：VirtualBox 中的 Linux 虚拟机，手机 PeerRDP 直连其 VRDE 端口
+  - VRDE **默认单连接**：PC 客户端占着时 PeerRDP 再连会被拒（不是 app 的 bug）
   - 开多连接：`VBoxManage modifyvm "VM名" --vrde-multi-con on`（VM 需关机后执行）；多连接共享同一桌面与键盘焦点
 
 ## 7. 输入/键盘机制（2026-11-07 反编译 AAR 确认）

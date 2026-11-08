@@ -26,7 +26,7 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = 'anrdp'
+rootProject.name = 'peerrdp'
 
 // 方案 A：freeRDPCore 以预编译 AAR 消费，工程只保留 :app 一个模块
 include ':app'

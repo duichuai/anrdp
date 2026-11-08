@@ -1,4 +1,4 @@
-package com.anrdp.edit
+package com.peerrdp.edit
 
 import android.os.Bundle
 import android.view.View
@@ -8,11 +8,11 @@ import android.widget.Spinner
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
-import com.anrdp.R
-import com.anrdp.data.AppDatabase
-import com.anrdp.data.ConnectionEntity
-import com.anrdp.data.TailscaleConfigEntity
-import com.anrdp.databinding.ActivityConnectionEditBinding
+import com.peerrdp.R
+import com.peerrdp.data.AppDatabase
+import com.peerrdp.data.ConnectionEntity
+import com.peerrdp.data.TailscaleConfigEntity
+import com.peerrdp.databinding.ActivityConnectionEditBinding
 import kotlinx.coroutines.launch
 
 class ConnectionEditActivity : AppCompatActivity() {

@@ -1,9 +1,9 @@
-package com.anrdp.tailscale
+package com.peerrdp.tailscale
 
 import android.content.Context
 import android.net.ConnectivityManager
 import android.util.Log
-import com.anrdp.data.TailscaleConfigEntity
+import com.peerrdp.data.TailscaleConfigEntity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock

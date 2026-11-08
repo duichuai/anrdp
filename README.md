@@ -1,6 +1,6 @@
-# AnRDP
+# PeerRDP
 
-AnRDP 是一个面向 Android 的远程桌面（RDP）客户端。引擎基于 [FreeRDP](https://github.com/FreeRDP/FreeRDP) 3.33.0，以预编译 AAR 形式集成；应用层使用 Kotlin + Room。可选集成 Tailscale（tsnet）组网：在自托管 Headscale 的 tailnet 中，通过应用内本地 SOCKS5 代理连接目标主机。
+PeerRDP 是一个面向 Android 的远程桌面（RDP）客户端。引擎基于 [FreeRDP](https://github.com/FreeRDP/FreeRDP) 3.33.0，以预编译 AAR 形式集成；应用层使用 Kotlin + Room。可选集成 Tailscale（tsnet）组网：在自托管 Headscale 的 tailnet 中，通过应用内本地 SOCKS5 代理连接目标主机。
 
 > 本项目为独立开发，与 FreeRDP、Tailscale 项目无隶属或背书关系。
 
@@ -15,7 +15,7 @@ AnRDP 是一个面向 Android 的远程桌面（RDP）客户端。引擎基于 [
 
 ## Tailscale 组网（可选）
 
-1. 准备自托管 Headscale 控制面（部署与 nginx 反代说明见 `anrdp-secrets/network-setup-guide.md`）。
+1. 准备自托管 Headscale 控制面（部署与 nginx 反代说明见 `peerrdp-secrets/network-setup-guide.md`）。
 2. 目标 Windows 主机安装 Tailscale 客户端并加入同一 tailnet，记录其 `100.x.y.z` 虚拟 IP。
 3. 打开主界面左下角的 Tailscale 按钮，填写控制面 URL、pre-auth key、节点名后保存。
 4. 编辑 RDP 连接，在「Tailscale 配置」下拉框选择该配置；主机地址填写目标主机的 tailnet IP（当前未使用 MagicDNS）。

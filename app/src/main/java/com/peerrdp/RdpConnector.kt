@@ -1,4 +1,4 @@
-package com.anrdp
+package com.peerrdp
 
 import android.content.Context
 import android.content.Intent
@@ -7,9 +7,9 @@ import android.os.Build
 import android.util.Log
 import android.view.WindowInsets
 import android.view.WindowManager
-import com.anrdp.data.AppDatabase
-import com.anrdp.data.ConnectionEntity
-import com.anrdp.tailscale.TailscaleManager
+import com.peerrdp.data.AppDatabase
+import com.peerrdp.data.ConnectionEntity
+import com.peerrdp.tailscale.TailscaleManager
 import com.freerdp.freerdpcore.presentation.SessionActivity
 import kotlinx.coroutines.delay
 

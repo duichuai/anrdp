@@ -1,4 +1,4 @@
-# AnRDP 技术设计文档
+# PeerRDP 技术设计文档
 
 | 项目 | 内容 |
 | --- | --- |
@@ -7,7 +7,7 @@
 | 更新日期 | 2026-11-08 |
 | 状态 | 已实现（基础版本对应提交 `01a51aa`；Tailscale 集成为 `02a0d91` / `f7ebaed`） |
 | 关联文档 | [android-rdp-design.md](./android-rdp-design.md)（方案设计 / 决策记录）、[tailscale-integration-design.md](./tailscale-integration-design.md)（Tailscale 方案） |
-| 代码位置 | `anrdp/`（Gradle 根工程，唯一模块 `:app`）；tsnet wrapper 在 `anrdp/tsnet-android/` |
+| 代码位置 | `peerrdp/`（Gradle 根工程，唯一模块 `:app`）；tsnet wrapper 在 `peerrdp/tsnet-android/` |
 
 ---
 
@@ -52,7 +52,7 @@
 │  TailscaleManager：启停 tsnet、读取状态、SOCKS5 地址       │
 ├─────────────────────────────────────────────────────────┤
 │ 数据层                                                   │
-│  Room（anrdp.db, v4）/ ConnectionDao / TailscaleConfigDao │
+│  Room（peerrdp.db, v4）/ ConnectionDao / TailscaleConfigDao │
 │  ConnectionEntity / TailscaleConfigEntity                │
 ├─────────────────────────────────────────────────────────┤
 │ 引擎层（AAR + .so）                                       │
@@ -74,7 +74,7 @@
 ### 2.3 运行时组件关系
 
 ```
-MainActivity ──observeAll()──▶ ConnectionDao ──▶ Room(anrdp.db)
+MainActivity ──observeAll()──▶ ConnectionDao ──▶ Room(peerrdp.db)
      │                              ▲
      │ 点击连接                      │ insert/update/delete
      ▼                              │
@@ -103,7 +103,7 @@ RdpConnector ──startActivity──▶ SessionActivity（AAR）
 | compileSdk / targetSdk / minSdk | 37 / 37 / 29 |
 | ABI | 仅 `arm64-v8a` |
 | UI | ViewBinding + Material 3（`material:1.14.0`）、AppCompat |
-| 数据 | Room 2.8.5（KSP）、coroutines 1.11.0；数据库 `anrdp.db` v4 |
+| 数据 | Room 2.8.5（KSP）、coroutines 1.11.0；数据库 `peerrdp.db` v4 |
 | 引擎 | `freeRDPCore-release.aar`（4.8MB，含 `libfreerdp3`、`libwinpr3`、`libssl`、`libcrypto`、`libsqlcipher` 等） |
 | 组网 | `tsnet.aar`（**7.0MB**，`tailscale.com` v1.104.0 + Go 1.27.1，含 `libgojni.so` 19MB，`minSdk 21`；已用 `-ldflags="-s -w"` + `ts_omit_*` 裁剪，详见 `docs/tailscale-integration-design.md` §4.3） |
 | 签名 | 固定 release keystore（PKCS12，别名 `androiddebugkey`），由 `keystore.properties` 提供，密钥与口令不入库 |
@@ -156,7 +156,7 @@ ALTER TABLE connections ADD COLUMN tailscaleConfigId INTEGER NOT NULL DEFAULT 0;
 | name | TEXT | NOT NULL | 配置显示名 |
 | controlURL | TEXT | NOT NULL | Headscale 控制面 URL，如 `https://hs.example.com` |
 | authKey | TEXT | NOT NULL | pre-auth key（节点注册凭证） |
-| hostname | TEXT | NOT NULL, 默认 `anrdp` | 节点在 tailnet 中的主机名 |
+| hostname | TEXT | NOT NULL, 默认 `peerrdp` | 节点在 tailnet 中的主机名 |
 | stateDir | TEXT | NOT NULL, 默认 `""` | tsnet 状态目录；为空时由 `TailscaleManager` 生成 `filesDir/tailscale-state-<id>` |
 | createdAt | INTEGER | NOT NULL | 创建时间戳 |
 
@@ -248,7 +248,7 @@ DAO 契约：`observeAll()`、`getAll()`、`getById(id)`、`insert`、`update`�
 ### 5.5 Tailscale 配置页 `TailscaleConfigEditActivity`
 
 - 入口：列表页左下 FAB；已有配置时打开最近创建的一条并回填，否则新建。当前 UI 为单配置快捷编辑，没有配置列表与删除入口（DAO 已提供 `delete`）。
-- 字段：名称、Headscale 控制面 URL、pre-auth key、主机名（默认 `anrdp`）；`stateDir` 不暴露，由应用自动生成。
+- 字段：名称、Headscale 控制面 URL、pre-auth key、主机名（默认 `peerrdp`）；`stateDir` 不暴露，由应用自动生成。
 - 校验：名称、控制面 URL、pre-auth key 非空；通过 `TextInputLayout.error` 提示。保存后 `finish()`。
 - 页面布局：`activity_tailscale_config_edit.xml`（Toolbar + ScrollView + 四个输入框 + 保存按钮）。
 
@@ -363,7 +363,7 @@ scripts/build-app.sh [debug|release]
   1) 生成 /tmp 工作副本（处理共享挂载盘的 CRLF，修复 gradlew 可执行）
   2) 安装/复用工具链（JDK 17 + Gradle 9.6.1 + SDK）
   3) :app:assembleDebug | assembleRelease
-  4) 校验产物（dex + arm64-v8a 原生库 + 权限清单）并回填 anrdp/app-<variant>.apk
+  4) 校验产物（dex + arm64-v8a 原生库 + 权限清单）并回填 peerrdp/app-<variant>.apk
   5) 版本名默认取当前提交可达的最近 v* tag（可用 APP_VERSION_NAME 覆盖），APK 版本号必须与之一致
 ```
 
@@ -372,7 +372,7 @@ scripts/build-app.sh [debug|release]
 | 工作流 | 触发 | 动作 |
 | --- | --- | --- |
 | `build.yml` | push 到 main / PR / 手动 | `assembleDebug`，校验权限清单与引擎原生库，上传构建产物 |
-| `release.yml` | tag `v*` / 手动 | 注入签名密钥 → `assembleRelease` → 校验版本号与 tag 一致、权限、原生库 → 打包 `AnRDP-<tag>-arm64-v8a.apk` + `.sha256` → 创建 GitHub Release |
+| `release.yml` | tag `v*` / 手动 | 注入签名密钥 → `assembleRelease` → 校验版本号与 tag 一致、权限、原生库 → 打包 `PeerRDP-<tag>-arm64-v8a.apk` + `.sha256` → 创建 GitHub Release |
 
 手动触发的非 tag 运行使用版本名 `0.0.0-dev.<run_number>`，且不创建 Release。
 
@@ -387,7 +387,7 @@ scripts/build-app.sh [debug|release]
 | 体积 | 29MB（v2 基线，未含 tsnet；当前未重测） | **约 35MB**（含 tsnet，v1.0.1 优化后实测；原 46MB） |
 | dex | 14.4MB（未压缩） | 2.5MB（R8 收缩） |
 | 原生库 | 12.5MB | 约 31MB（引擎 12.5MB + `libgojni.so` 19MB） |
-| 签名 | debug keystore | **固定 release keystore**（PKCS12，别名 `androiddebugkey`，沿用旧版 debug 密钥副本）；读取顺序：仓库根 `keystore.properties` → `../anrdp-secrets/keystore.properties` → 两者都缺失时回落 debug 签名；本机与 CI 使用同一把密钥，旧包可直接覆盖升级 |
+| 签名 | debug keystore | **固定 release keystore**（PKCS12，别名 `androiddebugkey`，沿用旧版 debug 密钥副本）；读取顺序：仓库根 `keystore.properties` → `../peerrdp-secrets/keystore.properties` → 两者都缺失时回落 debug 签名；本机与 CI 使用同一把密钥，旧包可直接覆盖升级 |
 | 调试 | `jniDebuggable true` | 关闭 |
 | 优化 | 无 | `minifyEnabled` + `shrinkResources` |
 
@@ -415,8 +415,8 @@ scripts/build-app.sh [debug|release]
 
 | 仓库 | 托管 | 内容 |
 | --- | --- | --- |
-| `anrdp` | GitHub（公开） | 源码、文档、构建脚本，不得含任何密钥 |
-| `anrdp-secrets` | 本地私有 Gitea | `keystore/anrdp-release.jks`、`keystore.properties`、token 等敏感信息 |
+| `peerrdp` | GitHub（公开） | 源码、文档、构建脚本，不得含任何密钥 |
+| `peerrdp-secrets` | 本地私有 Gitea | `keystore/peerrdp-release.jks`、`keystore.properties`、token 等敏感信息 |
 
 **密钥注入**：`release.yml` 从仓库 Secrets 读取 `KEYSTORE_B64`、`KEYSTORE_PASSWORD`、`KEY_ALIAS`、`KEY_PASSWORD`，base64 还原 keystore 并生成仓库根 `keystore.properties`；未配置 `KEYSTORE_B64` 时打印警告并回落 debug 签名（产物无法覆盖安装正式包）。
 
@@ -432,7 +432,7 @@ D2:F9:B6:18:C2:F2:FA:04:53:B0:05:96:94:6B:93:1A:CB:
 - `versionName` 来自 tag（去掉前缀 `v`），CI 校验 APK 内版本号与 tag 一致。
 - `versionCode` 由 `versionName` 按 `x*10000 + y*100 + z` 推导，最小为 1；保证 tag 递增即 code 递增。
 
-**发布产物**：`AnRDP-<tag>-arm64-v8a.apk` 与同名 `.sha256`，由 `softprops/action-gh-release` 自动附到 Release。
+**发布产物**：`PeerRDP-<tag>-arm64-v8a.apk` 与同名 `.sha256`，由 `softprops/action-gh-release` 自动附到 Release。
 
 **已发生的问题**：`v1.0.0` 发布时工作流尚未包含密钥注入步骤，产物为临时 debug 签名，无法覆盖升级；该 Release 与 tag 已删除。`v1.0.1` 是首个使用固定密钥的发布。
 
@@ -484,21 +484,21 @@ D2:F9:B6:18:C2:F2:FA:04:53:B0:05:96:94:6B:93:1A:CB:
 
 ```bash
 # 构建
-anrdp/scripts/build-app.sh            # debug  → anrdp/app-debug.apk
-anrdp/scripts/build-app.sh release    # release → anrdp/app-release.apk
+peerrdp/scripts/build-app.sh            # debug  → peerrdp/app-debug.apk
+peerrdp/scripts/build-app.sh release    # release → peerrdp/app-release.apk
 
 # 安装
-adb install -r anrdp/app-release.apk
+adb install -r peerrdp/app-release.apk
 
 # 校验
-apksigner verify --print-certs anrdp/app-release.apk
-aapt2 dump resources anrdp/app-release.apk | grep resolution
+apksigner verify --print-certs peerrdp/app-release.apk
+aapt2 dump resources peerrdp/app-release.apk | grep resolution
 
 # 重编 tsnet AAR（Go 1.27.1 + gomobile；脚本内已处理 GOROOT/GOPROXY）
 scripts/build-tsnet-aar.sh
 
 # 发布（打 tag 触发 release.yml）
-git tag -a v1.0.2 -m "AnRDP v1.0.2"
+git tag -a v1.0.2 -m "PeerRDP v1.0.2"
 git push origin v1.0.2
 ```
 
@@ -522,5 +522,5 @@ git push origin v1.0.2
 | 名称 | 是 | — | UI 显示名，可任意 |
 | 控制面 URL | 是 | — | Headscale 地址，如 `https://hs.example.com` |
 | pre-auth key | 是 | — | 建议一次性/短期 key |
-| 主机名 | 是 | `anrdp` | tailnet 内节点名 |
+| 主机名 | 是 | `peerrdp` | tailnet 内节点名 |
 | 状态目录 | 否 | 自动 | `filesDir/tailscale-state-<id>`，不暴露给 UI |

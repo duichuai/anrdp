@@ -1,12 +1,12 @@
-package com.anrdp.tailscale
+package com.peerrdp.tailscale
 
 import android.os.Bundle
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
-import com.anrdp.data.AppDatabase
-import com.anrdp.data.TailscaleConfigEntity
-import com.anrdp.databinding.ActivityTailscaleConfigEditBinding
+import com.peerrdp.data.AppDatabase
+import com.peerrdp.data.TailscaleConfigEntity
+import com.peerrdp.databinding.ActivityTailscaleConfigEditBinding
 import kotlinx.coroutines.launch
 
 class TailscaleConfigEditActivity : AppCompatActivity() {
@@ -67,7 +67,7 @@ class TailscaleConfigEditActivity : AppCompatActivity() {
             name = name,
             controlURL = controlURL,
             authKey = authKey,
-            hostname = binding.etHostname.text.toString().trim().ifEmpty { "anrdp" },
+            hostname = binding.etHostname.text.toString().trim().ifEmpty { "peerrdp" },
             stateDir = old?.stateDir ?: "",
             createdAt = old?.createdAt ?: System.currentTimeMillis()
         )

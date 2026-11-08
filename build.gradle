@@ -1,4 +1,4 @@
-// anrdp 根构建脚本
+// peerrdp 根构建脚本
 // 引擎（freeRDPCore）以预编译 AAR 消费，其版本与构建配置由上游 Studio 工程自持，
 // 主工程不再重复声明 compileApi/toolsVersion/ndkVersion/cmakeArguments，避免与上游对不齐。
 plugins {
