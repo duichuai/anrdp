@@ -5,9 +5,9 @@
 | 文档版本 | v1.2 |
 | 生成日期 | 2026-11-07 |
 | 更新日期 | 2026-11-08 |
-| 状态 | 已实现（基础版本对应提交 `01a51aa`；Tailscale 集成为 2026-11-08 未提交改动） |
+| 状态 | 已实现（基础版本对应提交 `01a51aa`；Tailscale 集成为 `02a0d91` / `f7ebaed`） |
 | 关联文档 | [android-rdp-design.md](./android-rdp-design.md)（方案设计 / 决策记录）、[tailscale-integration-design.md](./tailscale-integration-design.md)（Tailscale 方案） |
-| 代码位置 | `anrdp/`（Gradle 根工程，唯一模块 `:app`）；tsnet wrapper 在工作区根 `tsnet-android/` |
+| 代码位置 | `anrdp/`（Gradle 根工程，唯一模块 `:app`）；tsnet wrapper 在 `anrdp/tsnet-android/` |
 
 ---
 
@@ -271,6 +271,7 @@ DAO 契约：`observeAll()`、`getAll()`、`getById(id)`、`insert`、`update`�
 
 - `start()` 只创建一次实例；已运行则忽略后续请求（同一时间只支持一个 tsnet 节点）。
 - 启动前必须从 `ConnectivityManager` 读取活动网络的接口名、地址、默认网关并调用 `Tsnetandroid.setNetworkInfo`，否则 Go 侧 netmon 只有 loopback，会在 magicsock 深处 panic。
+- Go 侧 `NewServer` 设置 `TS_LOGS_DIR=stateDir` 并把 tsnet 日志写入 `stateDir/tsnet.log`；否则 `logpolicy` 在 Android 上找不到可写目录会 panic。
 - Go 侧 `Start()` 用 `recover` 将 panic 转为 error（Java 异常）；native SIGABRT 仍会杀进程，排查依赖 `filesDir/tailscale-state-<id>/tsnet.log`。
 
 ---
@@ -463,7 +464,7 @@ D2:F9:B6:18:C2:F2:FA:04:53:B0:05:96:94:6B:93:1A:CB:
 - URI 作为唯一集成面，能力受限但稳定；若需剪贴板增强、音频、文件传输等高级能力，必须评估改造 AAR 或直接调用 `LibFreeRDP`。
 - 分辨率选项与显示文案靠两个数组索引对齐，新增选项必须同时改两处。
 - 12.5MB 原生库为体积下限；`libsqlcipher`（2.1MB）被引擎数据库使用，裁剪需重编 AAR 并回归。
-- tsnet AAR 由仓库外的 `tsnet-android/` Go module 构建，仓库内无脚本、无源码；升级 Tailscale 或改 wrapper 需手工 `gomobile bind`，并同步 `tsnet-sources.jar`。当前 `tsnet-sources.jar` 早于 `setNetworkInfo` 改动，尚未同步（AAR 本体已含）。
+- tsnet AAR 由仓库内 `tsnet-android/` Go module 构建，`scripts/build-tsnet-aar.sh` 可重建并同步 `tsnet-sources.jar`。当前仓库内 `tsnet-sources.jar` 仍是早期版本（早于 `setNetworkInfo` 改动），AAR 本体已含该方法；重跑脚本即可回填最新 sources。
 - `TailscaleManager` 全部 JNI 调用串行化且只支持单实例；未来多节点需要改为按配置 id 管理实例池。
 - tsnet 状态目录（`filesDir/tailscale-state-<id>/`）会持久化节点身份与 `tsnet.log`，卸载应用才清理；暂无「重置节点」入口。
 
@@ -493,9 +494,8 @@ adb install -r anrdp/app-release.apk
 apksigner verify --print-certs anrdp/app-release.apk
 aapt2 dump resources anrdp/app-release.apk | grep resolution
 
-# 重编 tsnet AAR（Go 1.27.1 + gomobile；需代理下载模块）
-cd tsnet-android
-gomobile bind -target=android/arm64 -androidapi=21 -o ../anrdp/app/libs/tsnet.aar .
+# 重编 tsnet AAR（Go 1.27.1 + gomobile；脚本内已处理 GOROOT/GOPROXY）
+scripts/build-tsnet-aar.sh
 
 # 发布（打 tag 触发 release.yml）
 git tag -a v1.0.2 -m "AnRDP v1.0.2"

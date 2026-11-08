@@ -51,12 +51,10 @@ bash scripts/build-app.sh release          # release → app-release.apk（固�
 bash scripts/build-freerdpcore-aar.sh   # 重编 FreeRDP 引擎 AAR（需 NDK/CMake/JDK 21）
 ```
 
-tsnet AAR 由工作区根目录的 `tsnet-android/`（Go module，不纳入本仓库）经 gomobile 构建，目前没有仓库内脚本：
+tsnet AAR 由仓库内 `tsnet-android/`（Go module，wrapper 源码已入库）经 gomobile 构建，重建使用：
 
 ```bash
-cd tsnet-android
-gomobile bind -target=android/arm64 -androidapi=21 \
-  -o ../anrdp/app/libs/tsnet.aar .
+scripts/build-tsnet-aar.sh   # 产出并回填 app/libs/tsnet.aar + tsnet-sources.jar
 ```
 
 Go 模块下载通常需要代理（本机实测走 `socks5://192.168.56.1:1080`）。引擎重建需要 NDK 29.0.13113456、CMake 4.1.2、JDK 21；默认 FreeRDP 3.33.0 + OpenSSL 4.0.3，可用 `FREERDP_VERSION` / `OPENSSL_VERSION` 覆盖。

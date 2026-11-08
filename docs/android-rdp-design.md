@@ -1,7 +1,7 @@
 # AnRDP 设计文档 — Android RDP 远程桌面客户端
 
 > 版本：v2 设计稿（设计 + 实现记录）
-> 状态：**已实现**（基础版本提交 `01a51aa`；2026-11-08 增加 Tailscale 集成，未提交）
+> 状态：**已实现**（基础版本提交 `01a51aa`；2026-11-08 增加 Tailscale 集成，提交 `02a0d91` / `f7ebaed`）
 > 关系：复用 `../anrdp`（v1）已验证的成果与踩坑结论，在 `anrdp2` 重新组织工程与方案
 >
 > 实现差异、当前模块/数据层细节以 `docs/technical-design.md` 为准；Tailscale 方案见 `docs/tailscale-integration-design.md`。

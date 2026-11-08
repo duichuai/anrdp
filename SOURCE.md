@@ -27,7 +27,7 @@ AAR 由上述源码构建，构建期共应用 9 处补丁，全部为构建配�
 
 ## 3. tsnet AAR 源码
 
-`app/libs/tsnet.aar` 由工作区根目录的 `tsnet-android/`（Go module，**未纳入 anrdp 仓库**）用 `gomobile bind` 构建；wrapper 源码仅包含对 tsnet 的封装，未修改 Tailscale 上游源码。构建命令与版本见 `BUILD.md` §2.3 与 `docs/tailscale-integration-design.md` §4。
+`app/libs/tsnet.aar` 由仓库内 `tsnet-android/`（Go module，wrapper 源码已入库）通过 `scripts/build-tsnet-aar.sh`（`gomobile bind`）构建；wrapper 仅包含对 tsnet 的封装，未修改 Tailscale 上游源码。构建命令与版本见 `BUILD.md` §2.3 与 `docs/tailscale-integration-design.md` §4。
 
 其静态链接的组件源码地址：
 
@@ -39,7 +39,7 @@ AAR 由上述源码构建，构建期共应用 9 处补丁，全部为构建配�
 | Go 标准库 / golang.org/x | 1.27.1 | https://go.googlesource.com/go 、https://cs.opensource.google/go/x |
 | gomobile / gobind | latest | https://github.com/golang/mobile |
 
-> tsnet wrapper 源码可向维护者索取；若后续纳入仓库，将同步更新本节。
+> tsnet wrapper 源码即仓库内 `tsnet-android/`（`server.go`、`netinfo_android.go` 等），可直接获取。
 
 ## 4. 其他第三方组件源码
 

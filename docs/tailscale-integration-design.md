@@ -1,7 +1,7 @@
 # AnRDP 集成 Tailscale 设计文档
 
 > 版本：v1.1（设计 + 实现记录）
-> 状态：**已实现**（2026-11-08，改动尚未提交）
+> 状态：**已实现**（2026-11-08，代码与 wrapper 已提交：`02a0d91` / `f7ebaed`）
 > 关系：替代 `n2n-integration-design.md` 方案。利用 Tailscale（WireGuard）的成熟生态与 tsnet 嵌入库，在 anrdp 应用内实现 P2P 组网，使 RDP 可跨网络连接虚拟网段内的主机。
 
 ## 实现状态（2026-11-08）
@@ -10,15 +10,15 @@
 
 | 项 | 设计稿 | 实际实现 |
 | --- | --- | --- |
-| Go wrapper | `tsnet-android/`（独立模块） | 工作区根 `tsnet-android/`（Go module，**未纳入 anrdp 仓库**） |
+| Go wrapper | `tsnet-android/`（独立模块） | 仓库内 `tsnet-android/`（Go module，wrapper 源码已入库，提交 `f7ebaed`） |
 | wrapper API | `SOCKS5Listener()`，依赖 `Server.ServeSOCKS5` | `StartSOCKS5()` / `StopSOCKS5()` / `SOCKS5Addr()`，用 `tailscale.com/net/socks5.Server` + `tsnet.Server.Dial` |
 | 网络信息 | 未涉及 | Java 侧 `ConnectivityManager` → `Tsnetandroid.SetNetworkInfo` 注入接口/地址/网关（Android UID 无法直接 `net.Interfaces()`） |
-| 启动异常 | 未涉及 | Go `Start()` 内 `recover` panic；tsnet 日志写入 `stateDir/tsnet.log` |
+| 启动异常 | 未涉及 | Go `Start()` 内 `recover` panic；`NewServer` 设置 `TS_LOGS_DIR=stateDir`，日志写入 `stateDir/tsnet.log`（否则 logpolicy 会 panic） |
 | 版本 | tsnet 1.98.x、androidapi 29 | `tailscale.com` **v1.104.0**、Go **1.27.1**、`-androidapi 21` |
 | 配置页 | 配置列表 + 多套配置 | **单配置快捷编辑**（`TailscaleConfigEditActivity`，左下 FAB），无列表/删除入口 |
 | 就绪等待 | 15s | **60s**（每 500ms 轮询） |
 | 前台服务 | 建议实现 | **未实现**；tsnet 随应用进程存活 |
-| 构建脚本 | `scripts/build-tsnet-aar.sh` | 无脚本，手工 `gomobile bind` |
+| 构建脚本 | `scripts/build-tsnet-aar.sh` | 已提供 `scripts/build-tsnet-aar.sh`（提交 `f7ebaed`） |
 | 产物体积 | AAR 15–25MB | `tsnet.aar` 15MB，`libgojni.so` 30.5MB；release APK ≈46MB |
 
 已完成：Go wrapper、tsnet AAR、数据层（DB v4）、配置页、连接绑定与 SOCKS5 联动、错误回传。待办：真机 tailnet 端到端验证、前台服务、多配置管理页、状态展示。
@@ -40,7 +40,7 @@
 
 ### 1.2 本次交付范围
 
-v1 设计稿仅规划架构、模块划分、tsnet 原生库构建、SOCKS5 代理联动、构建方案与风险对策；2026-11-08 已按本文落地应用代码与 tsnet AAR（未提交），实现差异见上方「实现状态」。
+v1 设计稿仅规划架构、模块划分、tsnet 原生库构建、SOCKS5 代理联动、构建方案与风险对策；2026-11-08 已按本文落地应用代码与 tsnet AAR（提交 `02a0d91` / `f7ebaed`），实现差异见上方「实现状态」。
 
 ### 1.3 非目标（本期不做）
 
@@ -239,7 +239,7 @@ func (s *Server) TailnetIP() string {
 
 > 注：**实际实现未使用 `ServeSOCKS5`**，而是用 `tailscale.com/net/socks5.Server` + `tsnet.Server.Dial`，无需认证，仅监听 `127.0.0.1`。另外 `SetNetworkInfo` 会注册 `netmon.RegisterInterfaceGetter`，在 Go 侧合成 loopback + 注入的移动网络接口；这是 Android 上避免 netmon panic 的关键。
 >
-> 本段代码仍保留设计形态，完整实现见工作区根 `tsnet-android/server.go`。
+> 本段代码仍保留设计形态，完整实现见仓库内 `tsnet-android/server.go`。
 
 ### 4.3 gomobile bind 构建命令
 
@@ -463,19 +463,17 @@ dependencies {
 }
 ```
 
-### 8.2 tsnet AAR 构建（**无仓库内脚本**）
+### 8.2 tsnet AAR 构建脚本
 
-设计中的 `scripts/build-tsnet-aar.sh` 未实现。实际构建手工执行：
+已提供 `scripts/build-tsnet-aar.sh`：
 
 ```bash
-cd tsnet-android
-go mod download                    # 需代理
-gomobile bind -target=android/arm64 -androidapi=21 \
-  -o ../anrdp/app/libs/tsnet.aar .
-cp tsnet-sources.jar ../anrdp/app/libs/   # 若在同一目录生成
+scripts/build-tsnet-aar.sh
 ```
 
-构建依赖 Go 1.27.1 + gomobile + Android SDK/NDK；`tsnet-android/` 不在 anrdp 仓库中，也没有 `TSNET_VERSION` 变量（版本由 `go.mod` 锁定为 v1.104.0）。
+脚本流程：`go build ./...` 校验 → `gomobile bind -target=android/arm64 -androidapi=21` → 回填 `app/libs/tsnet.aar` 与 `tsnet-sources.jar`。
+
+默认环境：`GOROOT=$HOME/go1.27`、`ANDROID_HOME=/opt/android-sdk`、`GOPROXY=https://goproxy.cn,direct`、`GOTOOLCHAIN=local`；构建依赖 Go 1.27.1 + gomobile + Android SDK/NDK。版本由 `tsnet-android/go.mod` 锁定为 `tailscale.com v1.104.0`。
 
 ### 8.3 与 freeRDPCore 的共存
 
@@ -521,7 +519,7 @@ cp tsnet-sources.jar ../anrdp/app/libs/   # 若在同一目录生成
 4. 🟡 **RDP 联动**：`/proxy:socks5://` 注入已完成；待真机验证「启 tsnet → RDP 连虚拟 IP」
 5. ✅ **UI 与数据层**：`TailscaleConfigEditActivity`、`tailscaleConfigId`、编辑页下拉（单配置版）
 6. ❌ **前台服务与稳定性**：未实现；异常恢复已有 recover + 日志
-7. 🟡 **收尾**：APK 体积已评估（≈46MB）；许可文档与权限声明已更新；**改动尚未提交**
+7. ✅ **收尾**：APK 体积已评估（≈46MB）；许可文档、权限声明与 wrapper/脚本已提交（`02a0d91` / `f7ebaed`）
 
 ---
 

@@ -2,7 +2,7 @@
 
 > 本文件保存项目构建进度、环境布局与"勿回退"约束，供维护者参考。
 > 详细设计见 `docs/android-rdp-design.md`（§7 构建、§11 里程碑）；当前实现与技术债见 `docs/technical-design.md`；Tailscale 方案见 `docs/tailscale-integration-design.md`。
-> 文中路径以**工作区根**（仓库的上一级）为基准，即 `anrdp/...`、`tools/...`、`tsnet-android/...`。
+> 文中路径以**工作区根**（仓库的上一级）为基准，即 `anrdp/...`、`tools/...`；`tsnet-android/` 已在 `anrdp/` 仓库内。
 > 最近更新：2026-11-08
 
 ## 1. 项目概况
@@ -21,7 +21,7 @@
 | 3. 应用构建 assembleDebug | ✅ 2026-11-07 构建成功 |
 | 4. APK 校验与产出 | ✅ 产物 `anrdp/app-debug.apk`（29MB），含 dex 与全部 arm64-v8a 原生库 |
 | 5. 真机实测 | 🟡 进行中：手机直连 VirtualBox VRDE（Linux Mint），画面/鼠标/英文键盘输入正常；中文输入靠远端输入法上屏 |
-| 6. Tailscale（tsnet）集成 | 🟡 已实现（2026-11-08，未提交）：tsnet AAR + 配置页 + 连接绑定 + SOCKS5 联动；待真机验证 tailnet 连接 |
+| 6. Tailscale（tsnet）集成 | 🟡 已实现（2026-11-08，提交 `02a0d91` / `f7ebaed`）：tsnet AAR + 配置页 + 连接绑定 + SOCKS5 联动；待真机验证 tailnet 连接 |
 
 > 2026-11-07 修复：远程桌面画面过小（FreeRDP 默认 1024×768）。`RdpConnector` 现按连接配置的分辨率传 `size=WxH`；新建/编辑页可选 自适应/1280×720/1600×900/1920×1080/2560×1440/1024×768，DB v2 新增 `resolution` 字段（带 1→2 迁移）。
 >
@@ -48,11 +48,12 @@
 - 应用 manifest 用 `tools:node="remove"` 移除引擎合并进来的未使用权限：CAMERA、RECORD_AUDIO、READ/WRITE_EXTERNAL_STORAGE、POST_NOTIFICATIONS；保留 INTERNET、ACCESS_NETWORK_STATE、MODIFY_AUDIO_SETTINGS、ACCESS_WIFI_STATE。`build-app.sh` 构建后会校验权限清单。
 - 引擎/依赖版本已参数化：`build-freerdpcore-aar.sh` 默认 `FREERDP_VERSION=3.33.0`、`OPENSSL_VERSION=4.0.3`（可用同名环境变量覆盖）；缺源码时自动下载，并把版本与镜像实际 sha256 写入 `cmake/DepVersions.cmake`。**2026-11-08 已重编：仓库内 AAR 为 FreeRDP 3.33.0 + OpenSSL 4.0.3 的产物。**
 
-### 2.3 Tailscale（tsnet）集成（2026-11-08，未提交）
+### 2.3 Tailscale（tsnet）集成（2026-11-08）
 
-- 原生库：`app/libs/tsnet.aar`（15MB，含 `lib/arm64-v8a/libgojni.so`），由工作区根目录 `tsnet-android/`（Go module，不纳入 anrdp 仓库）用 `gomobile bind -target=android/arm64 -androidapi=21` 产出；`tsnet-sources.jar` 一并放入 `app/libs/`。
+- 原生库：`app/libs/tsnet.aar`（15MB，含 `lib/arm64-v8a/libgojni.so`），由仓库内 `tsnet-android/`（Go module，wrapper 源码已入库）用 `scripts/build-tsnet-aar.sh`（`gomobile bind -target=android/arm64 -androidapi=21`）产出；`tsnet-sources.jar` 一并回填到 `app/libs/`。
 - 版本：`tailscale.com` **v1.104.0**、Go **1.27.1**、gomobile（`golang.org/x/mobile`）；AAR 的 `minSdkVersion=21`，应用 `minSdk=29`。
-- `app/libs/tsnet-sources.jar` 当前是 18:08 的早期产物，尚未包含后续新增的 `setNetworkInfo`；重编 AAR 后需从 `tsnet-android` 重新复制（AAR 本体已含该方法）。
+- `app/libs/tsnet-sources.jar` 当前仍是 18:08 的早期产物，尚未包含后续新增的 `setNetworkInfo`；运行 `scripts/build-tsnet-aar.sh` 会自动回填最新 sources（AAR 本体已含该方法）。
+- Go 侧 `NewServer` 会设置 `TS_LOGS_DIR=stateDir` 并把 tsnet 日志写到 `stateDir/tsnet.log`；Android 上若不设置该环境变量，`logpolicy` 会因找不到可写日志目录而 panic。
 - Go wrapper：`tsnetandroid.Server` 暴露 `NewServer` / `Start` / `Close` / `StartSOCKS5` / `StopSOCKS5` / `Status` / `TailnetIP`；另有 `Tsnetandroid.SetNetworkInfo` 注入 Android 活动网络信息。
 - 应用层：
   - `data/TailscaleConfigEntity` + `TailscaleConfigDao`（表 `tailscale_configs`，含 `stateDir`）；
@@ -71,7 +72,7 @@
 | `platforms/android-37` 目录 | `tools/android-sdk/platforms/android-37`（由 `android-37.0` 复制并把元数据 ApiLevel 改为 37；AGP 按目录名 `android-37` 查找 target） |
 | Gradle 依赖缓存 | `~/.gradle`（放本地磁盘；共享挂载盘的文件锁会影响 Gradle/SQLite 缓存） |
 | 引擎源码 + 原生依赖镜像 | `anrdp/deps/`（不入 git；仅重编 AAR 时需要，脚本可自动下载） |
-| tsnet Go wrapper 源码 | 工作区根 `tsnet-android/`（不入 anrdp 仓库；仅重编 `app/libs/tsnet.aar` 时需要） |
+| tsnet Go wrapper 源码 | `anrdp/tsnet-android/`（已入库；仅重编 `app/libs/tsnet.aar` 时需要） |
 | 预编译 AAR | `anrdp/app/libs/freeRDPCore-release.aar`、`anrdp/app/libs/tsnet.aar`、`tsnet-sources.jar` |
 | 可选本地 Maven 补充仓库 | 环境变量 `LOCAL_MAVEN_REPO` 指定的目录（缺省不使用） |
 | 构建工作区 | `/tmp/anrdp2-app-build`、`/tmp/anrdp2-build`（tmpfs，重启即失，rsync 可重建，属正常） |
@@ -86,9 +87,8 @@ scripts/build-app.sh release  # release（R8 + 资源压缩，固定 release 密
 # 重编引擎 AAR（仅当引擎要升级时才需要）
 scripts/build-freerdpcore-aar.sh
 
-# 重编 tsnet AAR（仅当 tailscale 版本/Go wrapper 变更时才需要；无仓库内脚本）
-cd ../tsnet-android
-gomobile bind -target=android/arm64 -androidapi=21 -o ../anrdp/app/libs/tsnet.aar .
+# 重编 tsnet AAR（仅当 tailscale 版本/Go wrapper 变更时才需要）
+scripts/build-tsnet-aar.sh
 ```
 
 ## 5. 勿回退约束（踩坑结论）
@@ -112,7 +112,7 @@ gomobile bind -target=android/arm64 -androidapi=21 -o ../anrdp/app/libs/tsnet.aa
 
 - JDK：应用构建需 17+；重编 AAR 需 21
 - 引擎工具链：NDK 29.0.13113456 + CMake 4.1.2，**须装在本地磁盘**（共享挂载盘不支持符号链接，SDK 放上去会构建失败）
-- tsnet 工具链：Go 1.27.1 + gomobile；`gomobile bind` 需要 Android SDK/NDK 与 `androidapi 21`。Go 模块下载建议走代理（实测 `socks5://192.168.56.1:1080`，可设置 `GOPROXY` / `HTTPS_PROXY`）
+- tsnet 工具链：Go 1.27.1 + gomobile；`scripts/build-tsnet-aar.sh` 默认 `GOROOT=$HOME/go1.27`、`ANDROID_HOME=/opt/android-sdk`、`GOPROXY=https://goproxy.cn,direct`，可按本机覆盖；`gomobile bind` 固定 `androidapi 21`
 - 2026-11-08 已重编引擎：FreeRDP **3.33.0** + OpenSSL **4.0.3**（若 openssl.org 不可达，脚本会回退到 GitHub codeload；网络受限时可自行配置代理）
 - 构建机内存建议 8GB 以上（NDK 编译 + R8 压缩），内存紧张时仅出 arm64-v8a 并限制并发
 - 行尾统一由 `.gitattributes` 约定（`gradlew`/`*.sh` 为 LF，`*.bat` 为 CRLF）；若在共享挂载盘上出现整树差异，先用 `git diff --ignore-cr-at-eol` 确认是否为挂载噪声

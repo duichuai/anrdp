@@ -36,7 +36,7 @@ AnRDP（下称“本项目”）的分发物包含下列第三方软件。本文
 
 ## 2.1 关于 tsnet AAR 的修改
 
-`app/libs/tsnet.aar` 由工作区根目录 `tsnet-android/` 的薄 Go wrapper 构建，**未修改 tailscale.com、wireguard-go、gVisor 或 Go 运行时的上游源码**；wrapper 仅调用 tsnet 公开 API，并注册 `netmon.RegisterInterfaceGetter` 以在 Android 上注入网络信息。构建命令与版本见 [SOURCE.md](SOURCE.md) §3。
+`app/libs/tsnet.aar` 由仓库内 `tsnet-android/` 的薄 Go wrapper 构建，**未修改 tailscale.com、wireguard-go、gVisor 或 Go 运行时的上游源码**；wrapper 仅调用 tsnet 公开 API，并注册 `netmon.RegisterInterfaceGetter` 以在 Android 上注入网络信息。构建脚本 `scripts/build-tsnet-aar.sh`，版本信息见 [SOURCE.md](SOURCE.md) §3。
 
 ## 3. Apache-2.0 组件的版权归属
 
