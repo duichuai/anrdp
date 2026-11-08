@@ -2,9 +2,10 @@
 
 | 项目 | 内容 |
 | --- | --- |
-| 文档版本 | v1.0 |
+| 文档版本 | v1.1 |
 | 生成日期 | 2026-11-07 |
-| 状态 | 已实现（对应提交 `a935b04`） |
+| 更新日期 | 2026-11-08 |
+| 状态 | 已实现（对应提交 `01a51aa`） |
 | 关联文档 | [android-rdp-design.md](./android-rdp-design.md)（方案设计 / 决策记录） |
 | 代码位置 | `anrdp/`（Gradle 根工程，唯一模块 `:app`） |
 
@@ -58,7 +59,7 @@
 | --- | --- | --- |
 | 协议实现 | 不自研，复用 `freeRDPCore` 预编译 AAR | 免去 NDK 编译；引擎内部不可改，只能通过 URI 参数影响行为 |
 | 会话 UI | 直接复用 `SessionActivity`，不自绘 | 触摸/键盘/手势由引擎提供；样式与系统栏适配受 AAR 约束 |
-| 与引擎通信 | 只走 URI（`freerdp://...`），不直接调用 `LibFreeRDP` Java API | 耦合面最小，但能力受 URI 解析器支持的参数集限制 |
+| 与引擎通信 | 主路径只走 URI（`freerdp://...`），不直接调用 `LibFreeRDP` Java API | 耦合面最小，但能力受 URI 解析器支持的参数集限制；例外见 6.3（文本注入用公开 API） |
 | 数据存储 | Room + Kotlin Coroutines/Flow | 列表自动刷新；需要手写迁移，不能 `fallbackToDestructiveMigration` |
 
 ### 2.3 运行时组件关系
@@ -83,12 +84,13 @@ RdpConnector ──startActivity──▶ SessionActivity（AAR）
 | 项 | 版本 / 取值 |
 | --- | --- |
 | 语言 | Kotlin（AGP 9 内置 Kotlin 支持，不单独应用 kotlin-android 插件） |
-| AGP / Gradle / JDK | 9.2.1 / 9.6.1 / 17 |
+| AGP / Gradle / JDK | 9.2.1 / 9.6.1 / 17（重编引擎 AAR 需 JDK 21） |
 | compileSdk / targetSdk / minSdk | 37 / 37 / 29 |
 | ABI | 仅 `arm64-v8a` |
 | UI | ViewBinding + Material 3（`material:1.14.0`）、AppCompat |
 | 数据 | Room 2.8.5（KSP）、coroutines 1.11.0 |
-| 引擎 | `freeRDPCore-release.aar`（4.7MB，含 `libfreerdp3`、`libwinpr3`、`libssl`、`libcrypto`、`libsqlcipher` 等） |
+| 引擎 | `freeRDPCore-release.aar`（4.8MB，含 `libfreerdp3`、`libwinpr3`、`libssl`、`libcrypto`、`libsqlcipher` 等） |
+| 签名 | 固定 release keystore（PKCS12，别名 `androiddebugkey`），由 `keystore.properties` 提供，密钥与口令不入库 |
 | 构建内存约束 | `-Xmx1408m`、`workers.max=1`、`parallel=false`（构建机内存有限） |
 
 仓库仅使用 `google()`、`mavenCentral()`、`gradlePluginPortal()` 与本地补充仓库，顺序不可调整（镜像/残缺元数据会导致资源变体解析为空）。
@@ -231,6 +233,14 @@ freerdp://<user>@<host>[:<port>]/connect?size=<WxH>&p=<password>&d=<domain>
 | `configChanges` | orientation/screenSize/density… | 旋转不重建，分辨率不会重算 |
 | `windowSoftInputMode` | adjustResize | 软键盘弹出时压缩画面 |
 
+### 6.3 输入与键盘契约（2026-11-08 实测 / 反编译结论）
+
+- `SessionView.onCreateInputConnection` 返回 `BaseInputConnection(view, false)`，且 `EditorInfo.inputType = 0`。
+- **英文 / 符号键**：走 `KeyEvent` → `SessionActivity.onKeyDown` → `KeyboardMapper` → 扫描码，功能正常。
+- **手机侧中文输入法**：`commitText` 因 `fullEditor=false` 没有 `Editable` 而被直接丢弃，表现为"软键盘弹出但远端无输入"。当前方案是切英文键盘打拼音，由**远端输入法**（fcitx/ibus）上屏。
+- 其他可用路径：`ExtendedKeyboardView`（浮动工具条中的自绘 PC 键盘）发送真实扫描码；或调用 AAR 公开 API `LibFreeRDP.sendUnicodeKeyEvent(instance, ch, down)` 逐字符注入，无需修改 AAR。
+- `SessionInputManager.toggleKeyboard()` 同时做两件事：显示 `ExtendedKeyboardView` 与 `showSoftInput(sessionView, 1)`。
+
 ---
 
 ## 7. 关键流程
@@ -247,13 +257,25 @@ connect(): 组装 URI（含 size/p/d）→ 显式 Intent → SessionActivity
 
 ### 7.2 构建发布
 
+**本地构建**（`scripts/build-app.sh`）：
+
 ```
 scripts/build-app.sh [debug|release]
   1) 生成 /tmp 工作副本（处理共享挂载盘的 CRLF，修复 gradlew 可执行）
   2) 安装/复用工具链（JDK 17 + Gradle 9.6.1 + SDK）
   3) :app:assembleDebug | assembleRelease
-  4) 校验产物（dex + arm64-v8a 原生库齐全）并回填 anrdp/app-<variant>.apk
+  4) 校验产物（dex + arm64-v8a 原生库 + 权限清单）并回填 anrdp/app-<variant>.apk
+  5) 版本名默认取当前提交可达的最近 v* tag（可用 APP_VERSION_NAME 覆盖），APK 版本号必须与之一致
 ```
+
+**CI 发布**（GitHub Actions）：
+
+| 工作流 | 触发 | 动作 |
+| --- | --- | --- |
+| `build.yml` | push 到 main / PR / 手动 | `assembleDebug`，校验权限清单与引擎原生库，上传构建产物 |
+| `release.yml` | tag `v*` / 手动 | 注入签名密钥 → `assembleRelease` → 校验版本号与 tag 一致、权限、原生库 → 打包 `AnRDP-<tag>-arm64-v8a.apk` + `.sha256` → 创建 GitHub Release |
+
+手动触发的非 tag 运行使用版本名 `0.0.0-dev.<run_number>`，且不创建 Release。
 
 ---
 
@@ -266,7 +288,7 @@ scripts/build-app.sh [debug|release]
 | 体积 | 29MB | 17MB |
 | dex | 14.4MB（未压缩） | 2.5MB（R8 收缩） |
 | 原生库 | 12.5MB | 12.5MB（不变） |
-| 签名 | debug keystore | **固定 release keystore**（沿用旧版 debug 密钥副本，由 `keystore.properties` 提供；旧包可直接覆盖升级，本机与 CI 使用同一把密钥） |
+| 签名 | debug keystore | **固定 release keystore**（PKCS12，别名 `androiddebugkey`，沿用旧版 debug 密钥副本）；读取顺序：仓库根 `keystore.properties` → `../anrdp-secrets/keystore.properties` → 两者都缺失时回落 debug 签名；本机与 CI 使用同一把密钥，旧包可直接覆盖升级 |
 | 调试 | `jniDebuggable true` | 关闭 |
 | 优化 | 无 | `minifyEnabled` + `shrinkResources` |
 
@@ -287,6 +309,33 @@ scripts/build-app.sh [debug|release]
 - `lib/arm64-v8a/` 下 10 个原生库齐全（`libfreerdp3`、`libfreerdp-client3`、`libfreerdp-android`、`libwinpr3`、`libssl`、`libcrypto`、`libsqlcipher`、`libcjson`、`liburiparser`、`legacy`）；
 - 输出 SHA-256，便于真机核对。
 
+### 8.4 签名与发布链路（GitHub Actions）
+
+**仓库拆分**
+
+| 仓库 | 托管 | 内容 |
+| --- | --- | --- |
+| `anrdp` | GitHub（公开） | 源码、文档、构建脚本，不得含任何密钥 |
+| `anrdp-secrets` | 本地私有 Gitea | `keystore/anrdp-release.jks`、`keystore.properties`、token 等敏感信息 |
+
+**密钥注入**：`release.yml` 从仓库 Secrets 读取 `KEYSTORE_B64`、`KEYSTORE_PASSWORD`、`KEY_ALIAS`、`KEY_PASSWORD`，base64 还原 keystore 并生成仓库根 `keystore.properties`；未配置 `KEYSTORE_B64` 时打印警告并回落 debug 签名（产物无法覆盖安装正式包）。
+
+**密钥指纹**（SHA-256，用于核对发布包）：
+
+```
+D2:F9:B6:18:C2:F2:FA:04:53:B0:05:96:94:6B:93:1A:CB:
+2A:43:65:CF:30:8D:DC:CE:24:54:C1:E8:5E:E2:FD
+```
+
+**版本号**
+
+- `versionName` 来自 tag（去掉前缀 `v`），CI 校验 APK 内版本号与 tag 一致。
+- `versionCode` 由 `versionName` 按 `x*10000 + y*100 + z` 推导，最小为 1；保证 tag 递增即 code 递增。
+
+**发布产物**：`AnRDP-<tag>-arm64-v8a.apk` 与同名 `.sha256`，由 `softprops/action-gh-release` 自动附到 Release。
+
+**已发生的问题**：`v1.0.0` 发布时工作流尚未包含密钥注入步骤，产物为临时 debug 签名，无法覆盖升级；该 Release 与 tag 已删除。`v1.0.1` 是首个使用固定密钥的发布。
+
 ---
 
 ## 9. 质量与风险
@@ -302,7 +351,8 @@ scripts/build-app.sh [debug|release]
 | R5 | 连接失败无应用层反馈 | 用户只看到会话页停住 | 监听引擎会话事件，回传 Toast/Snackbar |
 | R6 | 无搜索/排序切换/删除撤销 | 连接多时难用 | 搜索框 + Undo（软删除字段） |
 | R7 | 无自动化测试 | 回归靠手工 | 至少补 DB 迁移与 URI 组装的单元测试 |
-| R8 | `versionCode` 由 tag 推导（x.y.z → x*10000+y*100+z） | 无法作为正式渠道分发 | 提升 tag 版本号，CI Secrets 注入固定密钥 |
+| R8 | `versionCode` 由 tag 推导（x.y.z → x*10000+y*100+z） | 不能按应用商店规则分级 | 已缓解：CI Secrets 注入固定密钥、tag 触发发布（v1.0.1 起）；上架前需另定版本策略 |
+| R9 | 手机侧中文输入法 `commitText` 被引擎输入连接丢弃 | 无法直接用手机输入法上屏 | 改用远端输入法；或在应用层调用 `LibFreeRDP.sendUnicodeKeyEvent` 逐字符注入 |
 
 ### 9.2 技术债
 
@@ -314,10 +364,10 @@ scripts/build-app.sh [debug|release]
 
 ## 10. 演进建议（按优先级）
 
-1. **安全与显示**：密码加密（R1）、限制会话页导出（R2）、insets 适配（R3）。
-2. **会话稳定性**：错误反馈（R5）、动态分辨率（R4）。
+1. **会话与输入**：错误反馈（R5）、中文文本注入（R9）、动态分辨率（R4）。
+2. **安全与显示**：密码加密（R1）、限制会话页导出（R2）、insets 适配（R3）。
 3. **日常易用**：搜索/排序/撤销删除（R6）、分辨率与画质档位、记住密码开关。
-4. **工程化**：单元测试与 CI（R7）、正式签名与版本号（R8）、补 `values-en`。
+4. **工程化**：单元测试（R7）、补 `values-en`；正式签名与 CI 发布已完成（R8）。
 
 ---
 
@@ -334,6 +384,10 @@ adb install -r anrdp/app-release.apk
 # 校验
 apksigner verify --print-certs anrdp/app-release.apk
 aapt2 dump resources anrdp/app-release.apk | grep resolution
+
+# 发布（打 tag 触发 release.yml）
+git tag -a v1.0.2 -m "AnRDP v1.0.2"
+git push origin v1.0.2
 ```
 
 ## 附录 B：连接配置字段与默认值
