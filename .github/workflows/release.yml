@@ -56,6 +56,7 @@ jobs:
           KEYSTORE_B64: ${{ secrets.KEYSTORE_B64 }}
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
         run: |
           set -euo pipefail
           if [ -n "${KEYSTORE_B64:-}" ]; then
@@ -64,7 +65,7 @@ jobs:
             {
               echo "storeFile=keystore/anrdp-release.jks"
               echo "storePassword=$KEYSTORE_PASSWORD"
-              echo "keyAlias=anrdp"
+              echo "keyAlias=${KEY_ALIAS:-androiddebugkey}"
               echo "keyPassword=${KEY_PASSWORD:-$KEYSTORE_PASSWORD}"
             } > keystore.properties
             echo "已注入专用 release 签名密钥"

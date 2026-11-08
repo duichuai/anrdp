@@ -266,7 +266,7 @@ scripts/build-app.sh [debug|release]
 | 体积 | 29MB | 17MB |
 | dex | 14.4MB（未压缩） | 2.5MB（R8 收缩） |
 | 原生库 | 12.5MB | 12.5MB（不变） |
-| 签名 | debug keystore | **专用 release keystore**（`keystore.properties` 提供，缺失时回退 debug；本机与 CI 使用同一把密钥） |
+| 签名 | debug keystore | **固定 release keystore**（沿用旧版 debug 密钥副本，由 `keystore.properties` 提供；旧包可直接覆盖升级，本机与 CI 使用同一把密钥） |
 | 调试 | `jniDebuggable true` | 关闭 |
 | 优化 | 无 | `minifyEnabled` + `shrinkResources` |
 
