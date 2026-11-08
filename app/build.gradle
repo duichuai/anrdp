@@ -2,9 +2,14 @@ apply plugin: 'com.android.application'
 // AGP 9.0+ 已内置 Kotlin 支持，无需 apply org.jetbrains.kotlin.android
 apply plugin: 'com.google.devtools.ksp'
 
-// 专用 release 签名：仓库根目录 keystore.properties（不入库，CI 由 Secrets 生成）。
-// 缺失时回退 debug 签名，保证无密钥环境下仍可构建。
+// 专用 release 签名：优先仓库根目录 keystore.properties（CI 由 Secrets 生成），
+// 本地没有时回退到同级私有仓库 ../anrdp-secrets/keystore.properties（不入 GitHub，历史另有备份）。
+// 两者都缺失时回退 debug 签名，保证无密钥环境下仍可构建。
 def keystorePropsFile = rootProject.file('keystore.properties')
+if (!keystorePropsFile.exists()) {
+    def secretsProps = rootProject.file('../anrdp-secrets/keystore.properties')
+    if (secretsProps.exists()) keystorePropsFile = secretsProps
+}
 def keystoreProps = new Properties()
 if (keystorePropsFile.exists()) {
     keystorePropsFile.withInputStream { keystoreProps.load(it) }
@@ -38,7 +43,7 @@ android {
     signingConfigs {
         release {
             if (hasReleaseSigning) {
-                storeFile rootProject.file(keystoreProps.getProperty('storeFile'))
+                storeFile new File(keystorePropsFile.parentFile, keystoreProps.getProperty('storeFile'))
                 storePassword keystoreProps.getProperty('storePassword')
                 keyAlias keystoreProps.getProperty('keyAlias')
                 keyPassword keystoreProps.getProperty('keyPassword')
